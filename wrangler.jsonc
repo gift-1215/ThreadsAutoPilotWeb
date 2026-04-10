@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "threads-autopilot-web",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-08",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "threads_autopilot",
+      "database_id": "6575ded0-bc91-4b67-8685-f2d8d474e3c4"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "vars": {
+    "SESSION_COOKIE_NAME": "taw_session",
+    "DEFAULT_TIMEZONE": "Asia/Taipei",
+    "GOOGLE_CLIENT_ID": "137084333752-g6eoii0iiof54m5hkk47o3krcfnf64q5.apps.googleusercontent.com"
+  }
+}

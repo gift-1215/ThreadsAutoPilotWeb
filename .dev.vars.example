@@ -1,0 +1,4 @@
+# 開發環境可改放這裡，避免把 ID 寫死在 wrangler.jsonc
+GOOGLE_CLIENT_ID=REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
+SESSION_COOKIE_NAME=taw_session
+DEFAULT_TIMEZONE=Asia/Taipei

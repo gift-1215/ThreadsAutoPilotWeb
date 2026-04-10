@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Threads Autopilot</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero card">
+        <h1>Threads Autopilot 控制台</h1>
+        <p>
+          使用者登入後可設定自己的 Threads Token、Gemini API Key、發文偏好與發文時間。系統會每天自動發文。
+        </p>
+      </section>
+
+      <section id="loginCard" class="card">
+        <h2>1. Google 登入</h2>
+        <p id="loginHint" class="hint">請先使用 Google 帳號登入。</p>
+        <div id="googleSignInBtn"></div>
+      </section>
+
+      <section id="appCard" class="card hidden">
+        <header class="cardHeader">
+          <div>
+            <h2>2. 自動發文設定</h2>
+            <p id="userInfo" class="hint"></p>
+          </div>
+          <button id="logoutBtn" class="btn ghost">登出</button>
+        </header>
+
+        <form id="settingsForm" class="grid">
+          <label class="field fieldWide">
+            <span>Threads Token</span>
+            <textarea
+              id="threadsToken"
+              rows="3"
+              placeholder="貼上你的 Threads Access Token"
+            ></textarea>
+          </label>
+
+          <label class="field fieldWide">
+            <span>Gemini API Key</span>
+            <input id="geminiApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
+          </label>
+
+          <label class="field">
+            <span>LLM 模型</span>
+            <select id="llmModel">
+              <option value="gemini-2.5-flash">gemini-2.5-flash（較便宜）</option>
+              <option value="gemini-2.5-pro">gemini-2.5-pro（較強）</option>
+            </select>
+          </label>
+
+          <label class="field fieldWide">
+            <span>Grounding（讓 LLM 查詢時事）</span>
+            <div class="switchRow">
+              <input id="enableGrounding" type="checkbox" />
+              <span>啟用 Grounding</span>
+            </div>
+            <p class="warningText">
+              注意：Grounding 可能會產生額外費用。若你目前使用免費額度，建議先關閉。
+            </p>
+          </label>
+
+          <label class="field fieldWide">
+            <span>給 LLM 的指令（你想讓它做什麼）</span>
+            <textarea
+              id="postInstruction"
+              rows="4"
+              placeholder="例如：請幫我產生一篇關於產品更新的貼文，重點放在功能價值與使用情境。"
+            ></textarea>
+          </label>
+
+          <label class="field fieldWide">
+            <span>發文風格（語氣）</span>
+            <textarea
+              id="postStyle"
+              rows="3"
+              placeholder="例如：專業但友善、句子短、避免過度行銷語氣。"
+            ></textarea>
+          </label>
+
+          <label class="field">
+            <span>每日發文時間</span>
+            <input id="postTime" type="time" />
+          </label>
+
+          <label class="field fieldWide">
+            <span>回覆留言時間點（可多個，格式 HH:MM，以逗號分隔）</span>
+            <input id="replyTimes" type="text" placeholder="12:30, 18:45" />
+          </label>
+
+          <label class="field">
+            <span>時區</span>
+            <input id="timezone" type="text" placeholder="Asia/Taipei" />
+          </label>
+
+          <label class="field switchField fieldWide">
+            <input id="enabled" type="checkbox" />
+            <span>啟用每日自動發文</span>
+          </label>
+
+          <div class="actions fieldWide">
+            <button id="saveBtn" type="submit" class="btn primary">儲存設定</button>
+            <button id="generateDraftBtn" type="button" class="btn">立即測試：先產生草稿</button>
+            <button id="regenerateDraftBtn" type="button" class="btn ghost">重新生產草稿</button>
+            <button id="publishDraftBtn" type="button" class="btn">發出目前草稿</button>
+            <button id="reloadRunsBtn" type="button" class="btn ghost">刷新執行紀錄</button>
+          </div>
+
+          <div id="loadingIndicator" class="loading hidden fieldWide">
+            <span class="spinner"></span>
+            <span id="loadingText">等待 LLM 回覆中...</span>
+          </div>
+
+          <label class="field fieldWide">
+            <span>立即發文測試草稿（可直接鍵盤編輯，再決定重生或發出）</span>
+            <textarea
+              id="draftPreview"
+              class="draftBox draftEditor"
+              rows="8"
+              placeholder="可直接鍵盤輸入下一篇草稿，系統會自動儲存。"
+            ></textarea>
+            <p id="draftEditStatus" class="hint">尚未有可編輯草稿。</p>
+          </label>
+        </form>
+      </section>
+
+      <section id="nextPostCard" class="card hidden">
+        <h2>3. 下一篇即將發出的文</h2>
+        <p id="nextDraftMeta" class="hint">目前尚未準備下一篇草稿。</p>
+        <pre id="nextDraftPreview" class="draftBox">目前沒有待發草稿。</pre>
+      </section>
+
+      <section id="runsCard" class="card hidden">
+        <header class="cardHeader runsHeader">
+          <h2>4. 最近執行紀錄</h2>
+          <button id="clearRunsBtn" type="button" class="btn danger">一鍵清除發文紀錄</button>
+        </header>
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>時間</th>
+                <th>類型</th>
+                <th>日期</th>
+                <th>狀態</th>
+                <th>訊息</th>
+                <th>Thread ID</th>
+              </tr>
+            </thead>
+            <tbody id="runsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p id="toast" class="toast hidden"></p>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
