@@ -1,5 +1,8 @@
 import { el, state } from "./state.js";
 
+const SETTINGS_TEXT_LIMIT = 1000;
+const CLEAR_CONFIRM_WORD = "CLEAR";
+
 function statusTag(status) {
   const safeStatus = String(status || "unknown").toLowerCase();
   const className =
@@ -15,6 +18,10 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function isClearRunsReady() {
+  return String(el.clearRunsConfirmText?.value || "").trim().toUpperCase() === CLEAR_CONFIRM_WORD;
 }
 
 export function showToast(message, durationMs = 3000) {
@@ -56,7 +63,10 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
     el.reloadRunsBtn.disabled = isLoading;
   }
   if (el.clearRunsBtn) {
-    el.clearRunsBtn.disabled = isLoading;
+    el.clearRunsBtn.disabled = isLoading || !isClearRunsReady();
+  }
+  if (el.clearRunsConfirmText) {
+    el.clearRunsConfirmText.disabled = isLoading;
   }
   if (el.logoutBtn) {
     el.logoutBtn.disabled = isLoading;
@@ -79,16 +89,77 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
   }
 }
 
-export function renderRuns(runs) {
-  if (!el.runsBody) {
-    return;
+function getFilteredRuns(runs) {
+  const statusFilter = String(el.runStatusFilter?.value || "all").toLowerCase();
+  const searchKeyword = String(el.runSearchInput?.value || "").trim().toLowerCase();
+
+  return runs.filter((run) => {
+    const status = String(run.status || "").toLowerCase();
+    if (statusFilter !== "all" && status !== statusFilter) {
+      return false;
+    }
+    if (!searchKeyword) {
+      return true;
+    }
+    const haystack = [
+      run.created_at,
+      run.run_type,
+      run.run_date,
+      run.status,
+      run.message,
+      run.thread_id
+    ]
+      .map((item) => String(item || "").toLowerCase())
+      .join(" ");
+    return haystack.includes(searchKeyword);
+  });
+}
+
+function updateRunsSummary(allRuns, filteredRuns) {
+  const success = allRuns.filter((run) => String(run.status || "").toLowerCase() === "success").length;
+  const failed = allRuns.filter((run) => String(run.status || "").toLowerCase() === "failed").length;
+  const skipped = allRuns.filter((run) => String(run.status || "").toLowerCase() === "skipped").length;
+
+  if (el.runsTotalCount) {
+    el.runsTotalCount.textContent = String(allRuns.length);
   }
-  if (!Array.isArray(runs) || runs.length === 0) {
-    el.runsBody.innerHTML = `<tr><td colspan="6">尚無紀錄</td></tr>`;
+  if (el.runsSuccessCount) {
+    el.runsSuccessCount.textContent = String(success);
+  }
+  if (el.runsFailedCount) {
+    el.runsFailedCount.textContent = String(failed);
+  }
+  if (el.runsSkippedCount) {
+    el.runsSkippedCount.textContent = String(skipped);
+  }
+  if (el.runsMeta) {
+    el.runsMeta.textContent = `顯示 ${filteredRuns.length} / ${allRuns.length} 筆，系統僅保留最近 30 筆。`;
+  }
+}
+
+export function renderRuns(runs) {
+  state.runs = Array.isArray(runs) ? runs : [];
+  const filteredRuns = getFilteredRuns(state.runs);
+
+  updateRunsSummary(state.runs, filteredRuns);
+
+  if (!el.runsBody || !el.runsCards) {
     return;
   }
 
-  el.runsBody.innerHTML = runs
+  if (state.runs.length === 0) {
+    el.runsBody.innerHTML = `<tr><td colspan="6">尚無紀錄</td></tr>`;
+    el.runsCards.innerHTML = `<p class="hint">尚無紀錄</p>`;
+    return;
+  }
+
+  if (filteredRuns.length === 0) {
+    el.runsBody.innerHTML = `<tr><td colspan="6">找不到符合篩選條件的紀錄</td></tr>`;
+    el.runsCards.innerHTML = `<p class="hint">找不到符合篩選條件的紀錄</p>`;
+    return;
+  }
+
+  el.runsBody.innerHTML = filteredRuns
     .map((run) => {
       const message = run.message ? escapeHtml(run.message) : "";
       const threadId = run.thread_id ? escapeHtml(run.thread_id) : "-";
@@ -105,6 +176,43 @@ export function renderRuns(runs) {
       </tr>`;
     })
     .join("");
+
+  el.runsCards.innerHTML = filteredRuns
+    .map((run) => {
+      const createdAt = escapeHtml(run.created_at || "");
+      const runType = escapeHtml(run.run_type || "");
+      const runDate = escapeHtml(run.run_date || "");
+      const message = run.message ? escapeHtml(run.message) : "-";
+      const threadId = run.thread_id ? escapeHtml(run.thread_id) : "-";
+
+      return `<article class="runCard">
+        <div class="runCardTop">
+          <strong>${runType}</strong>
+          ${statusTag(run.status)}
+        </div>
+        <dl class="runCardMeta">
+          <dt>時間</dt><dd>${createdAt}</dd>
+          <dt>日期</dt><dd>${runDate}</dd>
+          <dt>訊息</dt><dd>${message}</dd>
+          <dt>Thread ID</dt><dd>${threadId}</dd>
+        </dl>
+      </article>`;
+    })
+    .join("");
+}
+
+export function rerenderRuns() {
+  renderRuns(state.runs);
+}
+
+export function resetRunFilters() {
+  if (el.runStatusFilter) {
+    el.runStatusFilter.value = "all";
+  }
+  if (el.runSearchInput) {
+    el.runSearchInput.value = "";
+  }
+  rerenderRuns();
 }
 
 export function renderPendingDraft(pendingDraft) {
@@ -213,13 +321,16 @@ export function fillSettings(settings) {
 }
 
 export function collectSettings() {
+  const postInstruction = (el.postInstruction?.value || "").trim().slice(0, SETTINGS_TEXT_LIMIT);
+  const postStyle = (el.postStyle?.value || "").trim().slice(0, SETTINGS_TEXT_LIMIT);
+
   return {
     threadsToken: el.threadsToken?.value.trim() || "",
     geminiApiKey: el.geminiApiKey?.value.trim() || "",
     llmModel: el.llmModel?.value || "gemini-2.5-flash",
     enableGrounding: Boolean(el.enableGrounding?.checked),
-    postInstruction: el.postInstruction?.value.trim() || "",
-    postStyle: el.postStyle?.value.trim() || "",
+    postInstruction,
+    postStyle,
     postTime: el.postTime?.value || "09:00",
     replyTimes: el.replyTimes?.value.trim() || "",
     timezone: el.timezone?.value.trim() || "Asia/Taipei",

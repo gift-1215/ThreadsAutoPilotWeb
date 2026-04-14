@@ -6,13 +6,17 @@ import { el, state } from "./state.js";
 import {
   collectSettings,
   renderPendingDraft,
+  rerenderRuns,
   renderRuns,
+  resetRunFilters,
   setAuthView,
   setDraftEditStatus,
   setLoading,
   showToast
 } from "./ui.js";
 import { validateDraftText } from "./validation.js";
+
+const CLEAR_CONFIRM_WORD = "CLEAR";
 
 export function attachEventListeners() {
   if (el.settingsForm) {
@@ -112,6 +116,12 @@ export function attachEventListeners() {
 
   if (el.clearRunsBtn) {
     el.clearRunsBtn.addEventListener("click", async () => {
+      const confirmValue = String(el.clearRunsConfirmText?.value || "").trim().toUpperCase();
+      if (confirmValue !== CLEAR_CONFIRM_WORD) {
+        showToast("請先輸入 CLEAR 才能清除紀錄。", 3500);
+        return;
+      }
+
       const confirmed = window.confirm("確定要清除全部發文紀錄嗎？此動作無法復原。");
       if (!confirmed) {
         return;
@@ -121,12 +131,33 @@ export function attachEventListeners() {
       try {
         const resp = await api("/api/runs", { method: "DELETE" });
         await refreshRunsAndPending();
+        if (el.clearRunsConfirmText) {
+          el.clearRunsConfirmText.value = "";
+        }
         showToast(`已刪除 ${Number(resp.deletedCount || 0)} 筆紀錄`);
       } catch (error) {
         showToast(`刪除失敗：${error.message}`, 5000);
       } finally {
         setLoading(false);
       }
+    });
+  }
+
+  if (el.clearRunsConfirmText) {
+    el.clearRunsConfirmText.addEventListener("input", () => {
+      setLoading(state.isLoading);
+    });
+  }
+
+  if (el.runStatusFilter) {
+    el.runStatusFilter.addEventListener("change", () => {
+      rerenderRuns();
+    });
+  }
+
+  if (el.runSearchInput) {
+    el.runSearchInput.addEventListener("input", () => {
+      rerenderRuns();
     });
   }
 
@@ -144,6 +175,10 @@ export function attachEventListeners() {
         }
         renderRuns([]);
         renderPendingDraft(null);
+        if (el.clearRunsConfirmText) {
+          el.clearRunsConfirmText.value = "";
+        }
+        resetRunFilters();
         setAuthView(false);
         await renderGoogleButton();
         showToast("已登出");

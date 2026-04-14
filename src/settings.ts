@@ -10,6 +10,8 @@ import {
   sanitizeTimezone
 } from "./utils";
 
+const SETTINGS_TEXT_LIMIT = 1000;
+
 export function defaultSettings(env: Env): StoredSettings {
   return {
     threadsToken: "",
@@ -32,8 +34,8 @@ export function settingsFromRow(env: Env, row: UserSettingsRow): StoredSettings 
     geminiApiKey: row.gemini_api_key || "",
     llmModel: sanitizeLlmModel(row.llm_model),
     enableGrounding: Number(row.enable_grounding) === 1,
-    postInstruction: row.post_instruction || defaults.postInstruction,
-    postStyle: row.post_style || defaults.postStyle,
+    postInstruction: sanitizeText(row.post_instruction || defaults.postInstruction, SETTINGS_TEXT_LIMIT),
+    postStyle: sanitizeText(row.post_style || defaults.postStyle, SETTINGS_TEXT_LIMIT),
     postTime: sanitizePostTime(row.post_time),
     replyTimes: sanitizeReplyTimes(row.reply_times),
     timezone: sanitizeTimezone(row.timezone, defaultTimezone(env)),
@@ -64,8 +66,11 @@ export function normalizeIncomingSettings(env: Env, payload: Record<string, unkn
     geminiApiKey: sanitizeText(payload.geminiApiKey, 4000),
     llmModel: sanitizeLlmModel(payload.llmModel),
     enableGrounding: parseBoolean(payload.enableGrounding),
-    postInstruction: sanitizeText(payload.postInstruction ?? payload.postPreference, 8000),
-    postStyle: sanitizeText(payload.postStyle ?? payload.replyPreference, 8000),
+    postInstruction: sanitizeText(
+      payload.postInstruction ?? payload.postPreference,
+      SETTINGS_TEXT_LIMIT
+    ),
+    postStyle: sanitizeText(payload.postStyle ?? payload.replyPreference, SETTINGS_TEXT_LIMIT),
     postTime: sanitizePostTime(payload.postTime),
     replyTimes: sanitizeReplyTimes(payload.replyTimes),
     timezone: sanitizeTimezone(payload.timezone, defaultTimezone(env)),

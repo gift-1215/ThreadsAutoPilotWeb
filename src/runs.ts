@@ -1,8 +1,27 @@
 import { Env, PendingDraftRow, RunRow, StoredSettings } from "./types";
 import { randomId, sanitizeLlmModel, sanitizePostTime } from "./utils";
 
+const MAX_RUN_HISTORY = 30;
+
+async function enforceRunRetention(env: Env, userId: number) {
+  await env.DB.prepare(
+    `DELETE FROM post_runs
+     WHERE user_id = ?
+       AND id NOT IN (
+         SELECT id
+         FROM post_runs
+         WHERE user_id = ?
+         ORDER BY datetime(created_at) DESC, id DESC
+         LIMIT ?
+       )`
+  )
+    .bind(userId, userId, MAX_RUN_HISTORY)
+    .run();
+}
+
 export async function listRuns(env: Env, userId: number, limit = 20) {
-  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  await enforceRunRetention(env, userId);
+  const safeLimit = Math.min(MAX_RUN_HISTORY, Math.max(1, Number(limit) || 20));
   const query = await env.DB.prepare(
     `SELECT id, run_type, run_date, status, message, thread_id, created_at
      FROM post_runs
@@ -106,6 +125,7 @@ export async function insertRun(
       draft || null
     )
     .run();
+  await enforceRunRetention(env, userId);
   return runId;
 }
 

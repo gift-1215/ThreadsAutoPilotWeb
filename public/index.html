@@ -10,6 +10,7 @@
   <body>
     <main class="page">
       <section class="hero card">
+        <p class="heroBadge">Beta</p>
         <h1>Threads Autopilot 控制台</h1>
         <p>
           使用者登入後可設定自己的 Threads Token、Gemini API Key、發文偏好與發文時間。系統會每天自動發文。
@@ -26,7 +27,7 @@
         <header class="cardHeader">
           <div>
             <h2>2. 自動發文設定</h2>
-            <p id="userInfo" class="hint"></p>
+            <p id="userInfo" class="hint sectionDesc"></p>
           </div>
           <button id="logoutBtn" class="btn ghost">登出</button>
         </header>
@@ -70,8 +71,10 @@
             <textarea
               id="postInstruction"
               rows="4"
+              maxlength="1000"
               placeholder="例如：請幫我產生一篇關於產品更新的貼文，重點放在功能價值與使用情境。"
             ></textarea>
+            <p class="hint">最多 1000 字</p>
           </label>
 
           <label class="field fieldWide">
@@ -79,8 +82,10 @@
             <textarea
               id="postStyle"
               rows="3"
+              maxlength="1000"
               placeholder="例如：專業但友善、句子短、避免過度行銷語氣。"
             ></textarea>
+            <p class="hint">最多 1000 字</p>
           </label>
 
           <label class="field">
@@ -137,9 +142,44 @@
 
       <section id="runsCard" class="card hidden">
         <header class="cardHeader runsHeader">
-          <h2>4. 最近執行紀錄</h2>
-          <button id="clearRunsBtn" type="button" class="btn danger">一鍵清除發文紀錄</button>
+          <div>
+            <h2>4. 最近執行紀錄</h2>
+            <p id="runsMeta" class="hint sectionDesc">最多保留最近 30 筆執行紀錄。</p>
+          </div>
         </header>
+        <div class="runsStats">
+          <div class="statChip">
+            <span class="statLabel">總筆數</span>
+            <strong id="runsTotalCount">0</strong>
+          </div>
+          <div class="statChip">
+            <span class="statLabel">成功</span>
+            <strong id="runsSuccessCount">0</strong>
+          </div>
+          <div class="statChip">
+            <span class="statLabel">失敗</span>
+            <strong id="runsFailedCount">0</strong>
+          </div>
+          <div class="statChip">
+            <span class="statLabel">略過</span>
+            <strong id="runsSkippedCount">0</strong>
+          </div>
+        </div>
+        <div class="runsToolbar">
+          <label class="field">
+            <span>狀態篩選</span>
+            <select id="runStatusFilter">
+              <option value="all">全部</option>
+              <option value="success">成功</option>
+              <option value="failed">失敗</option>
+              <option value="skipped">略過</option>
+            </select>
+          </label>
+          <label class="field fieldWide">
+            <span>關鍵字搜尋</span>
+            <input id="runSearchInput" type="text" placeholder="搜尋類型、日期、訊息、Thread ID" />
+          </label>
+        </div>
         <div class="tableWrap">
           <table>
             <thead>
@@ -155,6 +195,22 @@
             <tbody id="runsBody"></tbody>
           </table>
         </div>
+        <div id="runsCards" class="runCards"></div>
+        <section class="dangerZone">
+          <h3>Danger Zone</h3>
+          <p class="hint">請先輸入 <code>CLEAR</code>，再按下清除。此動作無法復原。</p>
+          <div class="dangerActions">
+            <input
+              id="clearRunsConfirmText"
+              type="text"
+              autocomplete="off"
+              placeholder="輸入 CLEAR 以啟用按鈕"
+            />
+            <button id="clearRunsBtn" type="button" class="btn danger" disabled>
+              一鍵清除發文紀錄
+            </button>
+          </div>
+        </section>
       </section>
 
       <p id="toast" class="toast hidden"></p>

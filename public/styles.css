@@ -1,15 +1,15 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7fb;
+  --bg: #f3f6fb;
   --card: #ffffff;
-  --text: #121417;
+  --text: #0f1722;
   --muted: #5d6b7a;
   --line: #e4e9f1;
   --primary: #0a6fdb;
   --primary-ink: #ffffff;
   --danger: #b42318;
   --ok: #067647;
-  --shadow: 0 14px 30px rgba(22, 45, 77, 0.08);
+  --shadow: 0 18px 34px rgba(22, 45, 77, 0.08);
 }
 
 * {
@@ -19,7 +19,10 @@
 body {
   margin: 0;
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
-  background: radial-gradient(circle at 20% 0%, #ecf4ff 0%, var(--bg) 40%);
+  background:
+    radial-gradient(circle at 10% -20%, #dbeaff 0%, transparent 45%),
+    radial-gradient(circle at 90% 0%, #e7f7f2 0%, transparent 38%),
+    var(--bg);
   color: var(--text);
 }
 
@@ -39,6 +42,35 @@ body {
   box-shadow: var(--shadow);
 }
 
+.hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -40px -60px auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(10, 111, 219, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.heroBadge {
+  width: fit-content;
+  margin: 0 0 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1f4f9f;
+  background: #eaf2ff;
+  border: 1px solid #cfe1ff;
+}
+
 .hero h1 {
   margin: 0 0 8px;
   font-size: 1.7rem;
@@ -55,6 +87,10 @@ body {
   margin-top: 0;
   margin-bottom: 12px;
   font-size: 1.2rem;
+}
+
+.sectionDesc {
+  margin-top: -4px;
 }
 
 .cardHeader {
@@ -200,10 +236,12 @@ textarea {
   border-radius: 10px;
   padding: 9px 14px;
   cursor: pointer;
+  transition: transform 0.15s ease;
 }
 
 .btn:hover {
   background: #f6f9ff;
+  transform: translateY(-1px);
 }
 
 .btn.primary {
@@ -234,6 +272,39 @@ textarea {
   align-items: center;
 }
 
+.runsStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.statChip {
+  border: 1px solid #d9e3f0;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: #5f6f82;
+}
+
+.statChip strong {
+  font-size: 1.08rem;
+  color: #1d3047;
+}
+
+.runsToolbar {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .hint.error {
   color: var(--danger);
 }
@@ -261,6 +332,45 @@ th {
   color: #4d5c6c;
 }
 
+.runCards {
+  display: none;
+}
+
+.runCard {
+  border: 1px solid #dbe5f2;
+  border-radius: 12px;
+  background: #fcfdff;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.runCardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.runCardMeta {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 6px 10px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.runCardMeta dt {
+  margin: 0;
+  color: #5a6c80;
+}
+
+.runCardMeta dd {
+  margin: 0;
+  color: #1c2a3d;
+  word-break: break-word;
+}
+
 .statusTag {
   display: inline-block;
   border-radius: 999px;
@@ -284,6 +394,32 @@ th {
   color: #305bb8;
 }
 
+.dangerZone {
+  margin-top: 14px;
+  border: 1px solid #f7d4d1;
+  border-radius: 12px;
+  background: #fff7f7;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.dangerZone h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #8f1d13;
+}
+
+.dangerActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.dangerActions input {
+  border-color: #efc7c3;
+}
+
 .toast {
   position: fixed;
   right: 16px;
@@ -303,6 +439,27 @@ th {
 
 @media (max-width: 760px) {
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .runsStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .runsToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .tableWrap {
+    display: none;
+  }
+
+  .runCards {
+    display: grid;
+    gap: 10px;
+  }
+
+  .dangerActions {
     grid-template-columns: 1fr;
   }
 

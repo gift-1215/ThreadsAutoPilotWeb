@@ -6,7 +6,8 @@ export const state = {
   isLoading: false,
   draftSaveTimer: null,
   draftSaveRequestId: 0,
-  lastSavedDraft: ""
+  lastSavedDraft: "",
+  runs: []
 };
 
 export const el = {
@@ -34,12 +35,21 @@ export const el = {
   publishDraftBtn: document.querySelector("#publishDraftBtn"),
   reloadRunsBtn: document.querySelector("#reloadRunsBtn"),
   clearRunsBtn: document.querySelector("#clearRunsBtn"),
+  clearRunsConfirmText: document.querySelector("#clearRunsConfirmText"),
   loadingIndicator: document.querySelector("#loadingIndicator"),
   loadingText: document.querySelector("#loadingText"),
   draftPreview: document.querySelector("#draftPreview"),
   draftEditStatus: document.querySelector("#draftEditStatus"),
   nextDraftMeta: document.querySelector("#nextDraftMeta"),
   nextDraftPreview: document.querySelector("#nextDraftPreview"),
+  runsMeta: document.querySelector("#runsMeta"),
+  runsTotalCount: document.querySelector("#runsTotalCount"),
+  runsSuccessCount: document.querySelector("#runsSuccessCount"),
+  runsFailedCount: document.querySelector("#runsFailedCount"),
+  runsSkippedCount: document.querySelector("#runsSkippedCount"),
+  runStatusFilter: document.querySelector("#runStatusFilter"),
+  runSearchInput: document.querySelector("#runSearchInput"),
+  runsCards: document.querySelector("#runsCards"),
   logoutBtn: document.querySelector("#logoutBtn"),
   runsBody: document.querySelector("#runsBody"),
   toast: document.querySelector("#toast")
