@@ -2,6 +2,7 @@ import { el, state } from "./state.js";
 
 const SETTINGS_TEXT_LIMIT = 1000;
 const CLEAR_CONFIRM_WORD = "CLEAR";
+const STEPS = ["settings", "draft", "runs"];
 
 function statusTag(status) {
   const safeStatus = String(status || "unknown").toLowerCase();
@@ -70,6 +71,15 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
   }
   if (el.logoutBtn) {
     el.logoutBtn.disabled = isLoading;
+  }
+  if (el.stepTabSettings) {
+    el.stepTabSettings.disabled = isLoading;
+  }
+  if (el.stepTabDraft) {
+    el.stepTabDraft.disabled = isLoading;
+  }
+  if (el.stepTabRuns) {
+    el.stepTabRuns.disabled = isLoading;
   }
   if (el.publishDraftBtn) {
     el.publishDraftBtn.disabled = isLoading || !state.hasPendingDraft;
@@ -270,19 +280,66 @@ export function renderPendingDraft(pendingDraft) {
   setDraftEditStatus("可直接鍵盤編輯，輸入後會自動儲存為下一篇。", false);
 }
 
+function applyStepVisibility(isAuthed) {
+  const panelMap = {
+    settings: el.appCard,
+    draft: el.nextPostCard,
+    runs: el.runsCard
+  };
+  const tabMap = {
+    settings: el.stepTabSettings,
+    draft: el.stepTabDraft,
+    runs: el.stepTabRuns
+  };
+
+  if (!isAuthed) {
+    if (el.stepNavCard) {
+      el.stepNavCard.classList.add("hidden");
+    }
+    for (const step of STEPS) {
+      if (panelMap[step]) {
+        panelMap[step].classList.add("hidden");
+      }
+      if (tabMap[step]) {
+        tabMap[step].classList.remove("active");
+      }
+    }
+    return;
+  }
+
+  if (el.stepNavCard) {
+    el.stepNavCard.classList.remove("hidden");
+  }
+
+  const activeStep = STEPS.includes(state.activeStep) ? state.activeStep : "settings";
+  for (const step of STEPS) {
+    if (panelMap[step]) {
+      panelMap[step].classList.toggle("hidden", step !== activeStep);
+    }
+    if (tabMap[step]) {
+      tabMap[step].classList.toggle("active", step === activeStep);
+    }
+  }
+}
+
+export function setActiveStep(step) {
+  if (!STEPS.includes(step)) {
+    return;
+  }
+  state.activeStep = step;
+  applyStepVisibility(true);
+}
+
 export function setAuthView(isAuthed) {
   if (el.loginCard) {
     el.loginCard.classList.toggle("hidden", isAuthed);
   }
-  if (el.appCard) {
-    el.appCard.classList.toggle("hidden", !isAuthed);
+  if (!isAuthed) {
+    state.activeStep = "settings";
+  } else if (!state.activeStep) {
+    state.activeStep = "settings";
   }
-  if (el.nextPostCard) {
-    el.nextPostCard.classList.toggle("hidden", !isAuthed);
-  }
-  if (el.runsCard) {
-    el.runsCard.classList.toggle("hidden", !isAuthed);
-  }
+  applyStepVisibility(isAuthed);
 }
 
 export function fillSettings(settings) {

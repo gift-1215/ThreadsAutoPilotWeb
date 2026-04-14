@@ -9,6 +9,7 @@ import {
   rerenderRuns,
   renderRuns,
   resetRunFilters,
+  setActiveStep,
   setAuthView,
   setDraftEditStatus,
   setLoading,
@@ -19,6 +20,24 @@ import { validateDraftText } from "./validation.js";
 const CLEAR_CONFIRM_WORD = "CLEAR";
 
 export function attachEventListeners() {
+  if (el.stepTabSettings) {
+    el.stepTabSettings.addEventListener("click", () => {
+      setActiveStep("settings");
+    });
+  }
+
+  if (el.stepTabDraft) {
+    el.stepTabDraft.addEventListener("click", () => {
+      setActiveStep("draft");
+    });
+  }
+
+  if (el.stepTabRuns) {
+    el.stepTabRuns.addEventListener("click", () => {
+      setActiveStep("runs");
+    });
+  }
+
   if (el.settingsForm) {
     el.settingsForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -46,6 +65,7 @@ export function attachEventListeners() {
         const result = resp.result || {};
         showToast(result.message || "草稿已產生");
         await refreshRunsAndPending();
+        setActiveStep("draft");
       } catch (error) {
         showToast(`產生草稿失敗：${error.message}`, 5000);
       } finally {
@@ -62,6 +82,7 @@ export function attachEventListeners() {
         const result = resp.result || {};
         showToast(result.message || "草稿已重新產生");
         await refreshRunsAndPending();
+        setActiveStep("draft");
       } catch (error) {
         showToast(`重生草稿失敗：${error.message}`, 5000);
       } finally {
@@ -92,6 +113,7 @@ export function attachEventListeners() {
           : result.message || "發佈完成";
         showToast(message, 4500);
         await refreshRunsAndPending();
+        setActiveStep("runs");
       } catch (error) {
         showToast(`發文失敗：${error.message}`, 5000);
       } finally {
@@ -106,6 +128,7 @@ export function attachEventListeners() {
       try {
         await refreshRunsAndPending();
         showToast("已刷新");
+        setActiveStep("runs");
       } catch (error) {
         showToast(`刷新失敗：${error.message}`, 5000);
       } finally {

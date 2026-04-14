@@ -10,8 +10,15 @@
   <body>
     <main class="page">
       <section class="hero card">
-        <p class="heroBadge">Beta</p>
-        <h1>Threads Autopilot 控制台</h1>
+        <div class="heroHead">
+          <div>
+            <p class="heroBadge">Beta</p>
+            <h1>Threads Autopilot 控制台</h1>
+          </div>
+          <button id="themeToggleBtn" class="themeToggle" type="button" aria-pressed="false">
+            切換深色
+          </button>
+        </div>
         <p>
           使用者登入後可設定自己的 Threads Token、Gemini API Key、發文偏好與發文時間。系統會每天自動發文。
         </p>
@@ -23,11 +30,26 @@
         <div id="googleSignInBtn"></div>
       </section>
 
+      <section id="stepNavCard" class="card hidden stepNavCard">
+        <div class="stepTabs" role="tablist" aria-label="工作流程分頁">
+          <button id="stepTabSettings" class="stepTab active" type="button" data-step="settings">
+            設定
+          </button>
+          <button id="stepTabDraft" class="stepTab" type="button" data-step="draft">
+            草稿
+          </button>
+          <button id="stepTabRuns" class="stepTab" type="button" data-step="runs">
+            紀錄
+          </button>
+        </div>
+      </section>
+
       <section id="appCard" class="card hidden">
         <header class="cardHeader">
           <div>
             <h2>2. 自動發文設定</h2>
-            <p id="userInfo" class="hint sectionDesc"></p>
+            <p class="hint sectionDesc">設定你的模型、時區與自動發文規則</p>
+            <p id="userInfo" class="hint"></p>
           </div>
           <button id="logoutBtn" class="btn ghost">登出</button>
         </header>
@@ -110,33 +132,34 @@
 
           <div class="actions fieldWide">
             <button id="saveBtn" type="submit" class="btn primary">儲存設定</button>
-            <button id="generateDraftBtn" type="button" class="btn">立即測試：先產生草稿</button>
-            <button id="regenerateDraftBtn" type="button" class="btn ghost">重新生產草稿</button>
-            <button id="publishDraftBtn" type="button" class="btn">發出目前草稿</button>
-            <button id="reloadRunsBtn" type="button" class="btn ghost">刷新執行紀錄</button>
           </div>
 
           <div id="loadingIndicator" class="loading hidden fieldWide">
             <span class="spinner"></span>
             <span id="loadingText">等待 LLM 回覆中...</span>
           </div>
-
-          <label class="field fieldWide">
-            <span>立即發文測試草稿（可直接鍵盤編輯，再決定重生或發出）</span>
-            <textarea
-              id="draftPreview"
-              class="draftBox draftEditor"
-              rows="8"
-              placeholder="可直接鍵盤輸入下一篇草稿，系統會自動儲存。"
-            ></textarea>
-            <p id="draftEditStatus" class="hint">尚未有可編輯草稿。</p>
-          </label>
         </form>
       </section>
 
       <section id="nextPostCard" class="card hidden">
         <h2>3. 下一篇即將發出的文</h2>
+        <p class="hint sectionDesc">先產生草稿，再編輯後發佈</p>
         <p id="nextDraftMeta" class="hint">目前尚未準備下一篇草稿。</p>
+        <label class="field">
+          <span>草稿編輯區（可直接鍵盤編輯）</span>
+          <textarea
+            id="draftPreview"
+            class="draftBox draftEditor"
+            rows="8"
+            placeholder="可直接鍵盤輸入下一篇草稿，系統會自動儲存。"
+          ></textarea>
+        </label>
+        <p id="draftEditStatus" class="hint">尚未有可編輯草稿。</p>
+        <div class="actions">
+          <button id="generateDraftBtn" type="button" class="btn ctaSoft">產生草稿</button>
+          <button id="regenerateDraftBtn" type="button" class="btn ghost">重新產生草稿</button>
+          <button id="publishDraftBtn" type="button" class="btn ctaStrong">發佈草稿</button>
+        </div>
         <pre id="nextDraftPreview" class="draftBox">目前沒有待發草稿。</pre>
       </section>
 
@@ -144,6 +167,7 @@
         <header class="cardHeader runsHeader">
           <div>
             <h2>4. 最近執行紀錄</h2>
+            <p class="hint sectionDesc">系統只保留最新 30 筆執行紀錄以節省空間</p>
             <p id="runsMeta" class="hint sectionDesc">最多保留最近 30 筆執行紀錄。</p>
           </div>
         </header>
@@ -175,6 +199,10 @@
               <option value="skipped">略過</option>
             </select>
           </label>
+          <div class="field">
+            <span>操作</span>
+            <button id="reloadRunsBtn" type="button" class="btn ghost">刷新執行紀錄</button>
+          </div>
           <label class="field fieldWide">
             <span>關鍵字搜尋</span>
             <input id="runSearchInput" type="text" placeholder="搜尋類型、日期、訊息、Thread ID" />

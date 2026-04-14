@@ -1,6 +1,7 @@
 export const state = {
   me: null,
   googleClientId: "",
+  activeStep: "settings",
   toastTimer: null,
   hasPendingDraft: false,
   isLoading: false,
@@ -12,6 +13,11 @@ export const state = {
 
 export const el = {
   loginCard: document.querySelector("#loginCard"),
+  stepNavCard: document.querySelector("#stepNavCard"),
+  stepTabSettings: document.querySelector("#stepTabSettings"),
+  stepTabDraft: document.querySelector("#stepTabDraft"),
+  stepTabRuns: document.querySelector("#stepTabRuns"),
+  themeToggleBtn: document.querySelector("#themeToggleBtn"),
   loginHint: document.querySelector("#loginHint"),
   googleSignInBtn: document.querySelector("#googleSignInBtn"),
   appCard: document.querySelector("#appCard"),
