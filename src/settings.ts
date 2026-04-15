@@ -285,7 +285,7 @@ async function saveSettingsWithAllColumns(env: Env, userId: number, settings: St
       enabled,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(user_id) DO UPDATE SET
       threads_token = excluded.threads_token,
       gemini_api_key = excluded.gemini_api_key,

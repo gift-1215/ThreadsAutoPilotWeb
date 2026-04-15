@@ -1,5 +1,6 @@
 import { Env, RunResult, StoredSettings } from "./types";
-import { generatePostDraft } from "./gemini";
+import { generatePostDraft, generatePostDraftFromContext } from "./gemini";
+import { getNewsSnapshot } from "./news-snapshots";
 import {
   alreadyPostedToday,
   deletePendingDraft,
@@ -9,6 +10,10 @@ import {
 } from "./runs";
 import { publishToThreads } from "./threads";
 import { defaultTimezone, getLocalDateTime, safeErrorMessage, sanitizeTimezone } from "./utils";
+
+function isMissingNewsSnapshotTable(error: unknown) {
+  return safeErrorMessage(error).toLowerCase().includes("no such table: news_snapshots");
+}
 
 export function resolveRunDate(settings: StoredSettings, env: Env, now = new Date()) {
   const timezone = sanitizeTimezone(settings.timezone, defaultTimezone(env));
@@ -37,9 +42,32 @@ export async function createPreviewDraft(
   }
 
   try {
-    const draft = await generatePostDraft(settings, runDate);
+    let draft = "";
+    let usedNewsSnapshot = false;
+    try {
+      const snapshot = await getNewsSnapshot(env, userId);
+      const snapshotContext = String(snapshot?.contextText || "").trim();
+      if (snapshotContext) {
+        draft = await generatePostDraftFromContext(settings, runDate, snapshotContext);
+        usedNewsSnapshot = true;
+      } else {
+        draft = await generatePostDraft(settings, runDate);
+      }
+    } catch (error) {
+      if (!isMissingNewsSnapshotTable(error)) {
+        throw error;
+      }
+      draft = await generatePostDraft(settings, runDate);
+    }
+
     await upsertPendingDraft(env, userId, draft, settings);
-    const message = mode === "manual_regenerate" ? "草稿已重新產生" : "草稿已產生，請確認後再發出";
+    const message = usedNewsSnapshot
+      ? mode === "manual_regenerate"
+        ? "草稿已重新產生（已結合最近抓取新聞）"
+        : "草稿已產生（已結合最近抓取新聞）"
+      : mode === "manual_regenerate"
+        ? "草稿已重新產生"
+        : "草稿已產生，請確認後再發出";
     const runId = await insertRun(env, userId, mode, runDate, "success", message, draft);
     return {
       runId,

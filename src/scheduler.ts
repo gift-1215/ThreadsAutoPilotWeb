@@ -1,4 +1,4 @@
-import { executeScheduledPosting, ensureNextDraftForScheduledWindow } from "./posting";
+import { executeScheduledPosting } from "./posting";
 import { executeScheduledNewsPrefill } from "./news";
 import { executeScheduledReplySweep } from "./replies";
 import { settingsFromRow } from "./settings";
@@ -325,7 +325,6 @@ export async function runScheduledJob(env: Env) {
 
     if (shouldRunPostingAtCurrentMinute) {
       await executeScheduledPosting(env, row.user_id, settings, now);
-      await ensureNextDraftForScheduledWindow(env, row.user_id, settings, localNow.dateKey);
     }
 
     if (shouldRunReplySweepAtCurrentMinute) {

@@ -79,16 +79,16 @@ export function attachEventListeners() {
 
   if (el.runNewsNowBtn) {
     el.runNewsNowBtn.addEventListener("click", async () => {
-      setLoading(true, "正在抓取近兩天新聞並整理草稿...");
+      setLoading(true, "正在抓取近兩天新聞並整理摘要...");
       try {
         const resp = await api("/api/news/run-now", { method: "POST", body: "{}" });
         const result = resp.result || {};
         renderNewsFetchResult(result);
-        showToast(result.message || "已完成新聞草稿更新", 5000);
+        showToast(result.message || "已完成新聞抓取", 5000);
         await refreshRunsAndPending();
         setActiveStep("draft");
       } catch (error) {
-        showToast(`新聞草稿生成失敗：${error.message}`, 5000);
+        showToast(`新聞抓取失敗：${error.message}`, 5000);
       } finally {
         setLoading(false);
       }

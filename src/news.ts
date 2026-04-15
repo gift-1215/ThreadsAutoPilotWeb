@@ -1,4 +1,5 @@
 import { generatePostDraftFromContext } from "./gemini";
+import { saveNewsSnapshot } from "./news-snapshots";
 import { resolveRunDate } from "./posting";
 import { getPendingDraft, insertRun, upsertPendingDraft } from "./runs";
 import {
@@ -12,7 +13,7 @@ import {
 import { DEFAULT_NEWS_PROVIDER, getLocalDateTime, safeErrorMessage, sanitizeNewsProvider } from "./utils";
 
 const NEWS_LOOKBACK_DAYS = 2;
-const MAX_QUERY_ATTEMPTS = 5;
+const MAX_QUERY_ATTEMPTS = 8;
 type NewsRunType = "scheduled_news_prefill" | "manual_news_prefill";
 type RequestedNewsProvider = "google_rss" | "gnews" | "auto";
 type ConcreteNewsProvider = "google_rss" | "gnews";
@@ -44,6 +45,11 @@ interface GNewsQueryPreset {
 interface RssQueryPreset {
   label: string;
   query: string;
+  hl?: string;
+  gl?: string;
+  ceid?: string;
+  lang?: string | null;
+  country?: string | null;
 }
 
 interface NewsFetchError extends Error {
@@ -59,6 +65,10 @@ interface NewsFetchResult {
   rateLimited: boolean;
   providerUsed: ConcreteNewsProvider;
   requestedProvider: RequestedNewsProvider;
+}
+
+function isMissingNewsSnapshotTable(error: unknown) {
+  return safeErrorMessage(error).toLowerCase().includes("no such table: news_snapshots");
 }
 
 function cleanSnippet(input: string, maxLength = 140) {
@@ -251,17 +261,56 @@ function buildGoogleRssQueryPresets(keywords: string[]) {
 
   const withWhen = (query: string) => String(query || "").trim().replace(/\s+/g, " ").trim();
 
-  const presets: RssQueryPreset[] = [
-    { label: "Google RSS（關鍵字 OR）", query: withWhen(`${plainOrQuery} when:${NEWS_LOOKBACK_DAYS}d`) },
+  const twZhPresets: RssQueryPreset[] = [
     {
-      label: "Google RSS（關鍵字空白）",
-      query: withWhen(`${whitespaceQuery} when:${NEWS_LOOKBACK_DAYS}d`)
+      label: "Google RSS（台灣繁中 OR）",
+      query: withWhen(`${plainOrQuery} when:${NEWS_LOOKBACK_DAYS}d`),
+      hl: "zh-TW",
+      gl: "TW",
+      ceid: "TW:zh-Hant",
+      lang: "zh-TW",
+      country: "TW"
     },
     {
-      label: "Google RSS（關鍵字精確）",
-      query: withWhen(`${quotedQuery} when:${NEWS_LOOKBACK_DAYS}d`)
+      label: "Google RSS（台灣繁中空白）",
+      query: withWhen(`${whitespaceQuery} when:${NEWS_LOOKBACK_DAYS}d`),
+      hl: "zh-TW",
+      gl: "TW",
+      ceid: "TW:zh-Hant",
+      lang: "zh-TW",
+      country: "TW"
+    },
+    {
+      label: "Google RSS（台灣繁中精確）",
+      query: withWhen(`${quotedQuery} when:${NEWS_LOOKBACK_DAYS}d`),
+      hl: "zh-TW",
+      gl: "TW",
+      ceid: "TW:zh-Hant",
+      lang: "zh-TW",
+      country: "TW"
     }
   ];
+  const globalPresets: RssQueryPreset[] = [
+    {
+      label: "Google RSS（全域 OR）",
+      query: withWhen(`${plainOrQuery} when:${NEWS_LOOKBACK_DAYS}d`),
+      lang: null,
+      country: null
+    },
+    {
+      label: "Google RSS（全域空白）",
+      query: withWhen(`${whitespaceQuery} when:${NEWS_LOOKBACK_DAYS}d`),
+      lang: null,
+      country: null
+    },
+    {
+      label: "Google RSS（全域精確）",
+      query: withWhen(`${quotedQuery} when:${NEWS_LOOKBACK_DAYS}d`),
+      lang: null,
+      country: null
+    }
+  ];
+  const presets: RssQueryPreset[] = [...twZhPresets, ...globalPresets];
 
   const deduped = new Map<string, RssQueryPreset>();
   for (const preset of presets) {
@@ -269,8 +318,14 @@ function buildGoogleRssQueryPresets(keywords: string[]) {
     if (!query) {
       continue;
     }
-    if (!deduped.has(query)) {
-      deduped.set(query, { ...preset, query });
+    const key = [
+      query,
+      String(preset.hl || ""),
+      String(preset.gl || ""),
+      String(preset.ceid || "")
+    ].join("|");
+    if (!deduped.has(key)) {
+      deduped.set(key, { ...preset, query });
     }
   }
 
@@ -445,6 +500,15 @@ async function requestGoogleRssByPreset(
 ): Promise<NewsArticle[]> {
   const endpoint = new URL("https://news.google.com/rss/search");
   endpoint.searchParams.set("q", preset.query);
+  if (preset.hl) {
+    endpoint.searchParams.set("hl", preset.hl);
+  }
+  if (preset.gl) {
+    endpoint.searchParams.set("gl", preset.gl);
+  }
+  if (preset.ceid) {
+    endpoint.searchParams.set("ceid", preset.ceid);
+  }
 
   const response = await fetch(endpoint.toString(), {
     method: "GET",
@@ -587,6 +651,7 @@ async function fetchGoogleRssArticles(
 
   const queryPresets = buildGoogleRssQueryPresets(settings.newsKeywords);
   const normalizeLimit = Math.max(settings.newsMaxItems * 3, settings.newsMaxItems);
+  const targetCount = settings.newsMaxItems;
   const attempts: NewsQueryAttemptResult[] = [];
   const combinedArticles: NewsArticle[] = [];
   let rateLimited = false;
@@ -597,15 +662,18 @@ async function fetchGoogleRssArticles(
       attempts.push({
         label: preset.label,
         query: preset.query,
-        lang: null,
-        country: null,
+        lang: preset.lang ?? null,
+        country: preset.country ?? null,
         matched: articles.length,
         status: "success"
       });
 
       if (articles.length > 0) {
         combinedArticles.push(...articles);
-        const normalized = normalizeArticles(combinedArticles, settings.newsMaxItems);
+      }
+
+      const normalized = normalizeArticles(combinedArticles, targetCount);
+      if (normalized.length >= targetCount) {
         return {
           articles: normalized,
           attempts,
@@ -620,8 +688,8 @@ async function fetchGoogleRssArticles(
       attempts.push({
         label: preset.label,
         query: preset.query,
-        lang: null,
-        country: null,
+        lang: preset.lang ?? null,
+        country: preset.country ?? null,
         matched: 0,
         status: "error",
         error: message
@@ -643,6 +711,17 @@ async function fetchGoogleRssArticles(
   }
 
   const successCount = attempts.filter((attempt) => attempt.status === "success").length;
+  const normalizedCombined = normalizeArticles(combinedArticles, targetCount);
+  if (normalizedCombined.length > 0) {
+    return {
+      articles: normalizedCombined,
+      attempts,
+      rateLimited,
+      providerUsed: "google_rss",
+      requestedProvider
+    };
+  }
+
   if (!successCount && attempts.length > 0) {
     if (rateLimited) {
       return {
@@ -766,6 +845,7 @@ async function executeNewsPrefill(
 ): Promise<RunResult> {
   const runDate = resolveRunDate(settings, env, now);
   const selectedProvider = resolveRequestedProvider(settings);
+  const shouldGenerateDraft = runType === "scheduled_news_prefill";
 
   if (!settings.newsEnabled && runType === "scheduled_news_prefill") {
     const message = "新聞草稿功能未啟用";
@@ -786,7 +866,7 @@ async function executeNewsPrefill(
     };
   }
 
-  if (!settings.geminiApiKey) {
+  if (shouldGenerateDraft && !settings.geminiApiKey) {
     const message = "缺少 LLM API Key，無法根據新聞生成草稿";
     const runId = await insertRun(env, userId, runType, runDate, "failed", message);
     return {
@@ -824,6 +904,21 @@ async function executeNewsPrefill(
       fetchResult.articles,
       fetchResult.providerUsed
     );
+    const context = fetchResult.articles.length
+      ? buildNewsContext(settings, fetchResult.articles, fetchResult.providerUsed)
+      : "";
+    try {
+      await saveNewsSnapshot(env, userId, {
+        provider: fetchResult.providerUsed,
+        contextText: context,
+        preview: newsPreview,
+        capturedAt: now
+      });
+    } catch (error) {
+      if (!isMissingNewsSnapshotTable(error)) {
+        throw error;
+      }
+    }
 
     if (!fetchResult.articles.length) {
       const attemptSummary = buildAttemptSummary(fetchResult.attempts);
@@ -840,11 +935,24 @@ async function executeNewsPrefill(
       return { runId, status: "skipped", message, runType, runDate, newsPreview };
     }
 
-    const context = buildNewsContext(settings, fetchResult.articles, fetchResult.providerUsed);
+    const firstTitle = cleanSnippet(fetchResult.articles[0]?.title || "", 56);
+    if (!shouldGenerateDraft) {
+      const message = [
+        `已抓取近 ${NEWS_LOOKBACK_DAYS} 天新聞 ${fetchResult.articles.length} 則`,
+        `來源：${providerLabel(fetchResult.providerUsed)}`,
+        `關鍵字：${settings.newsKeywords.join("、")}`,
+        firstTitle ? `最新：${firstTitle}` : "",
+        "已儲存新聞摘要，請到草稿區按「產生草稿」或「重新產生草稿」"
+      ]
+        .filter(Boolean)
+        .join("，");
+      const runId = await insertRun(env, userId, runType, runDate, "success", message);
+      return { runId, status: "success", message, runType, runDate, newsPreview };
+    }
+
     const draft = await generatePostDraftFromContext(settings, localNow.dateKey, context);
     await upsertPendingDraft(env, userId, draft, settings);
 
-    const firstTitle = cleanSnippet(fetchResult.articles[0]?.title || "", 56);
     const message = [
       `已抓取近 ${NEWS_LOOKBACK_DAYS} 天新聞 ${fetchResult.articles.length} 則`,
       `來源：${providerLabel(fetchResult.providerUsed)}`,
@@ -871,7 +979,9 @@ async function executeNewsPrefill(
       : [];
     const provider = (error as NewsFetchError)?.providerUsed || selectedProvider;
     const newsPreview = buildNewsPreview(settings, attempts, [], provider);
-    const message = `新聞草稿產生失敗：${safeErrorMessage(error)}`;
+    const message = shouldGenerateDraft
+      ? `新聞草稿產生失敗：${safeErrorMessage(error)}`
+      : `新聞抓取失敗：${safeErrorMessage(error)}`;
     const runId = await insertRun(env, userId, runType, runDate, "failed", message);
     return { runId, status: "failed", message, runType, runDate, newsPreview };
   }

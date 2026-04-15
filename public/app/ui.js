@@ -533,7 +533,7 @@ export function renderNewsFetchResult(result) {
     el.newsFetchResultCard.classList.add("hidden");
     el.newsFetchStatusTag.className = "statusTag skipped";
     el.newsFetchStatusTag.textContent = "略過";
-    el.newsFetchResultMeta.textContent = "尚未執行「立即抓新聞草稿」。";
+    el.newsFetchResultMeta.textContent = "尚未執行「立即抓取新聞」。";
     el.newsFetchResultMeta.classList.remove("error");
     if (el.newsFetchAttemptList) {
       el.newsFetchAttemptList.innerHTML = "";

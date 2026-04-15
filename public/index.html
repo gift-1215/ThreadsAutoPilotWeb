@@ -133,7 +133,7 @@
           <label class="field fieldWide">
             <span>新聞關鍵字（可多個，逗號分隔）</span>
             <input id="newsKeywords" type="text" placeholder="AI, 台股, 半導體" />
-            <p class="hint">系統會以這些關鍵字抓近 2 天全域新聞（不限制語言與地區）並摘要後產生草稿。</p>
+            <p class="hint">系統會抓近 2 天全域新聞並保存摘要。手動按「立即抓取新聞」只更新摘要，不會立刻呼叫 LLM。</p>
           </label>
 
           <label class="field">
@@ -178,7 +178,7 @@
 
           <div class="actions fieldWide">
             <button id="saveBtn" type="submit" class="btn primary">儲存設定</button>
-            <button id="runNewsNowBtn" type="button" class="btn ctaSoft">立即抓新聞草稿</button>
+            <button id="runNewsNowBtn" type="button" class="btn ctaSoft">立即抓取新聞</button>
           </div>
 
           <div id="loadingIndicator" class="loading hidden fieldWide">
@@ -213,7 +213,7 @@
             <h3>新聞抓取結果（本次）</h3>
             <span id="newsFetchStatusTag" class="statusTag skipped">skipped</span>
           </div>
-          <p id="newsFetchResultMeta" class="hint">尚未執行「立即抓新聞草稿」。</p>
+          <p id="newsFetchResultMeta" class="hint">尚未執行「立即抓取新聞」。</p>
           <ul id="newsFetchAttemptList" class="newsAttemptList"></ul>
           <div id="newsFetchArticleList" class="newsArticleList"></div>
         </section>
