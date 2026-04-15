@@ -55,6 +55,16 @@
         </header>
 
         <form id="settingsForm" class="grid">
+          <div id="settingsSaveReminder" class="settingsSaveReminder fieldWide" role="status" aria-live="polite">
+            <strong>提醒</strong>
+            <p id="settingsSaveReminderText">已載入最近一次儲存設定。修改後請務必按「儲存設定」。</p>
+          </div>
+
+          <div class="settingsSectionTitle fieldWide">
+            <h3>帳號與地區</h3>
+            <p class="hint">先設定登入憑證與時區，避免排程時間跑掉。</p>
+          </div>
+
           <label class="field fieldWide">
             <span>Threads Token</span>
             <textarea
@@ -63,6 +73,17 @@
               placeholder="貼上你的 Threads Access Token"
             ></textarea>
           </label>
+
+          <label class="field">
+            <span>時區</span>
+            <select id="timezone"></select>
+            <p class="hint">建議選擇 Asia/Taipei</p>
+          </label>
+
+          <div class="settingsSectionTitle fieldWide">
+            <h3>模型與內容</h3>
+            <p class="hint">決定用哪家模型、語氣，以及給 LLM 的指令。</p>
+          </div>
 
           <label class="field">
             <span>LLM 公司</span>
@@ -120,6 +141,16 @@
             <p class="hint">最多 1000 字</p>
           </label>
 
+          <div class="settingsSectionTitle fieldWide">
+            <h3>發文與留言排程</h3>
+            <p class="hint">控制每日自動發文與留言掃描時間點。</p>
+          </div>
+
+          <label class="field switchField fieldWide">
+            <input id="enabled" type="checkbox" />
+            <span>啟用每日自動發文</span>
+          </label>
+
           <label class="field">
             <span>每日發文時間</span>
             <input id="postTime" type="time" />
@@ -128,6 +159,16 @@
           <label class="field fieldWide">
             <span>回覆留言時間點（可多個，格式 HH:MM，以逗號分隔）</span>
             <input id="replyTimes" type="text" placeholder="12:30, 18:45" />
+          </label>
+
+          <div class="settingsSectionTitle fieldWide">
+            <h3>新聞摘要草稿</h3>
+            <p class="hint">先抓新聞摘要，再由排程時間產生新聞草稿。</p>
+          </div>
+
+          <label class="field switchField fieldWide">
+            <input id="newsEnabled" type="checkbox" />
+            <span>啟用每日新聞摘要草稿</span>
           </label>
 
           <label class="field fieldWide">
@@ -146,11 +187,6 @@
           </label>
 
           <label class="field">
-            <span>每日抓新聞時間</span>
-            <input id="newsFetchTime" type="time" />
-          </label>
-
-          <label class="field">
             <span>每次抓取新聞則數</span>
             <select id="newsMaxItems">
               <option value="3">3</option>
@@ -160,21 +196,14 @@
             </select>
           </label>
 
-          <label class="field switchField fieldWide">
-            <input id="newsEnabled" type="checkbox" />
-            <span>啟用每日新聞摘要草稿</span>
-          </label>
-
           <label class="field">
-            <span>時區</span>
-            <select id="timezone"></select>
-            <p class="hint">建議選擇 Asia/Taipei</p>
+            <span>每日抓新聞時間</span>
+            <input id="newsFetchTime" type="time" />
           </label>
 
-          <label class="field switchField fieldWide">
-            <input id="enabled" type="checkbox" />
-            <span>啟用每日自動發文</span>
-          </label>
+          <p class="hint fieldWide actionHint">
+            修改欄位後務必先按「儲存設定」，未儲存內容不會被「立即抓取新聞」或排程任務使用。
+          </p>
 
           <div class="actions fieldWide">
             <button id="saveBtn" type="submit" class="btn primary">儲存設定</button>

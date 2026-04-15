@@ -6,6 +6,11 @@ const STEPS = ["settings", "draft", "runs"];
 const DEFAULT_TIMEZONE = "Asia/Taipei";
 const DEFAULT_LLM_PROVIDER = "gemini";
 const DEFAULT_NEWS_PROVIDER = "google_rss";
+const SETTINGS_SAVE_MESSAGES = {
+  clean: "已載入最近一次儲存設定。修改後請務必按「儲存設定」。",
+  dirty: "你有尚未儲存的設定變更。請先按「儲存設定」再執行其他操作。",
+  saved: "設定已儲存。後續若再修改，請記得再按一次「儲存設定」。"
+};
 const LLM_PROVIDER_CONFIG = {
   gemini: {
     apiKeyLabel: "Gemini API Key",
@@ -230,6 +235,20 @@ export function setDraftEditStatus(message, isError = false) {
   }
   el.draftEditStatus.textContent = message;
   el.draftEditStatus.classList.toggle("error", isError);
+}
+
+export function setSettingsSaveState(mode = "clean") {
+  const saveState =
+    mode === "dirty" || mode === "saved" || mode === "clean" ? mode : "clean";
+  state.settingsSaveState = saveState;
+
+  if (!el.settingsSaveReminder || !el.settingsSaveReminderText) {
+    return;
+  }
+
+  el.settingsSaveReminder.classList.toggle("isDirty", saveState === "dirty");
+  el.settingsSaveReminder.classList.toggle("isSaved", saveState === "saved");
+  el.settingsSaveReminderText.textContent = SETTINGS_SAVE_MESSAGES[saveState];
 }
 
 export function syncLlmProviderUi(provider, preferredModel = "") {
@@ -736,6 +755,7 @@ export function fillSettings(settings) {
   if (el.enabled) {
     el.enabled.checked = Boolean(settings.enabled);
   }
+  setSettingsSaveState("clean");
 }
 
 export function collectSettings() {

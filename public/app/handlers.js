@@ -15,6 +15,7 @@ import {
   setDraftEditStatus,
   setLoading,
   setManualReplyLoading,
+  setSettingsSaveState,
   showToast,
   syncLlmProviderUi
 } from "./ui.js";
@@ -51,13 +52,24 @@ export function attachEventListeners() {
           method: "PUT",
           body: JSON.stringify(settings)
         });
+        setSettingsSaveState("saved");
         showToast("設定已儲存");
       } catch (error) {
+        setSettingsSaveState("dirty");
         showToast(`儲存失敗：${error.message}`, 4500);
       } finally {
         setLoading(false);
       }
     });
+
+    const markSettingsDirty = () => {
+      if (!state.me || state.isLoading) {
+        return;
+      }
+      setSettingsSaveState("dirty");
+    };
+    el.settingsForm.addEventListener("input", markSettingsDirty);
+    el.settingsForm.addEventListener("change", markSettingsDirty);
   }
 
   if (el.generateDraftBtn) {

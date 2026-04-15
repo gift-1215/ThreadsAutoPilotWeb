@@ -202,6 +202,63 @@ body {
   grid-column: 1 / -1;
 }
 
+.settingsSaveReminder {
+  margin: 2px 0 4px;
+  border: 1px solid #f6d38f;
+  background: #fff8eb;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.settingsSaveReminder strong {
+  font-size: 0.88rem;
+  color: #9a3412;
+}
+
+.settingsSaveReminder p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #9a3412;
+}
+
+.settingsSaveReminder.isDirty {
+  border-color: #f0a95b;
+  background: #fff3dc;
+}
+
+.settingsSaveReminder.isSaved {
+  border-color: #9fd7bb;
+  background: #ecfbf2;
+}
+
+.settingsSaveReminder.isSaved strong,
+.settingsSaveReminder.isSaved p {
+  color: #166534;
+}
+
+.settingsSectionTitle {
+  margin: 2px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.settingsSectionTitle h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.settingsSectionTitle p {
+  margin-top: 4px;
+}
+
+.actionHint {
+  margin-top: -2px;
+}
+
 input,
 textarea,
 select,
@@ -271,6 +328,31 @@ textarea {
   color: #ffd7b0;
   background: rgba(88, 54, 20, 0.45);
   border-color: rgba(246, 179, 108, 0.45);
+}
+
+:root[data-theme="dark"] .settingsSaveReminder {
+  border-color: rgba(234, 165, 84, 0.52);
+  background: rgba(92, 64, 22, 0.36);
+}
+
+:root[data-theme="dark"] .settingsSaveReminder strong,
+:root[data-theme="dark"] .settingsSaveReminder p {
+  color: #ffe1be;
+}
+
+:root[data-theme="dark"] .settingsSaveReminder.isDirty {
+  border-color: rgba(248, 181, 93, 0.7);
+  background: rgba(112, 77, 26, 0.42);
+}
+
+:root[data-theme="dark"] .settingsSaveReminder.isSaved {
+  border-color: rgba(102, 187, 145, 0.65);
+  background: rgba(21, 74, 53, 0.45);
+}
+
+:root[data-theme="dark"] .settingsSaveReminder.isSaved strong,
+:root[data-theme="dark"] .settingsSaveReminder.isSaved p {
+  color: #b9f2d4;
 }
 
 .loading {
