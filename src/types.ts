@@ -4,6 +4,7 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   SESSION_COOKIE_NAME?: string;
   DEFAULT_TIMEZONE?: string;
+  GNEWS_API_KEY?: string;
 }
 
 export interface GoogleTokenInfo {
@@ -28,6 +29,7 @@ export interface UserSettingsRow {
   user_id: number;
   threads_token: string | null;
   gemini_api_key: string | null;
+  llm_provider: string | null;
   llm_model: string | null;
   enable_grounding: number;
   post_instruction: string | null;
@@ -36,6 +38,11 @@ export interface UserSettingsRow {
   reply_preference: string | null;
   post_time: string;
   reply_times: string | null;
+  news_enabled: number;
+  news_keywords: string | null;
+  news_fetch_time: string;
+  news_max_items: number;
+  news_provider: string | null;
   timezone: string;
   enabled: number;
 }
@@ -62,12 +69,18 @@ export interface PendingDraftRow {
 export interface StoredSettings {
   threadsToken: string;
   geminiApiKey: string;
+  llmProvider: string;
   llmModel: string;
   enableGrounding: boolean;
   postInstruction: string;
   postStyle: string;
   postTime: string;
   replyTimes: string[];
+  newsEnabled: boolean;
+  newsKeywords: string[];
+  newsFetchTime: string;
+  newsMaxItems: number;
+  newsProvider: string;
   timezone: string;
   enabled: boolean;
 }
@@ -80,4 +93,31 @@ export interface RunResult {
   runType: string;
   runDate: string;
   draft?: string;
+  newsPreview?: NewsRunPreview;
+}
+
+export interface NewsPreviewArticle {
+  title: string;
+  source: string;
+  publishedAt: string;
+  snippet: string;
+  url: string;
+}
+
+export interface NewsQueryAttemptResult {
+  label: string;
+  query: string;
+  lang: string | null;
+  country: string | null;
+  matched: number;
+  status: "success" | "error";
+  error?: string;
+}
+
+export interface NewsRunPreview {
+  lookbackDays: number;
+  keywords: string[];
+  provider: string;
+  attempts: NewsQueryAttemptResult[];
+  articles: NewsPreviewArticle[];
 }

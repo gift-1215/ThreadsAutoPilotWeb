@@ -26,11 +26,11 @@ export async function createPreviewDraft(
   const runDate = resolveRunDate(settings, env, now);
 
   if (!settings.geminiApiKey) {
-    const runId = await insertRun(env, userId, mode, runDate, "failed", "缺少 Gemini API Key");
+    const runId = await insertRun(env, userId, mode, runDate, "failed", "缺少 LLM API Key");
     return {
       runId,
       status: "failed",
-      message: "缺少 Gemini API Key",
+      message: "缺少 LLM API Key",
       runType: mode,
       runDate
     };
@@ -79,12 +79,12 @@ export async function publishDraftRun(
       runType,
       runDate,
       "failed",
-      "缺少 Threads token 或 Gemini API Key"
+      "缺少 Threads token 或 LLM API Key"
     );
     return {
       runId,
       status: "failed",
-      message: "缺少 Threads token 或 Gemini API Key",
+      message: "缺少 Threads token 或 LLM API Key",
       runType,
       runDate
     };
@@ -197,7 +197,7 @@ export async function ensureNextDraftForScheduledWindow(
       "scheduled_prefill",
       runDate,
       "failed",
-      "缺少 Gemini API Key，無法自動補下一篇草稿"
+      "缺少 LLM API Key，無法自動補下一篇草稿"
     );
     return;
   }

@@ -330,6 +330,85 @@ textarea {
   gap: 10px;
 }
 
+.newsResult {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.newsResultHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.newsResultHead h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.newsAttemptList {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.newsAttemptList li {
+  color: var(--text);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.newsAttemptList .attemptError {
+  color: var(--danger);
+}
+
+.newsArticleList {
+  display: grid;
+  gap: 10px;
+}
+
+.newsArticleItem {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.newsArticleItem h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.newsArticleItem a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.newsArticleItem a:hover {
+  text-decoration: underline;
+}
+
+.newsArticleSnippet {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.newsArticleLink {
+  font-size: 0.9rem;
+}
+
 .btn {
   border: 1px solid var(--line);
   background: var(--card);
@@ -343,6 +422,11 @@ textarea {
 .btn:hover {
   background: #f6f9ff;
   transform: translateY(-1px);
+}
+
+.btn.isBusy {
+  opacity: 0.8;
+  cursor: wait;
 }
 
 :root[data-theme="dark"] .btn:hover {

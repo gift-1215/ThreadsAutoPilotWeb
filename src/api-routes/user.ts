@@ -1,4 +1,6 @@
 import { createPreviewDraft, publishDraftRun } from "../posting";
+import { executeManualNewsPrefill } from "../news";
+import { executeManualReplySweep } from "../replies";
 import { deletePendingDraft, deleteRuns, getPendingDraft, listRuns, upsertPendingDraft } from "../runs";
 import { getSettings, normalizeIncomingSettings, saveSettings } from "../settings";
 import { Env, SessionRow } from "../types";
@@ -129,6 +131,18 @@ export async function handleUserApiRoutes(
     if (result.status === "success") {
       await deletePendingDraft(env, session.user_id);
     }
+    return jsonResponse({ result });
+  }
+
+  if (url.pathname === "/api/replies/scan-now" && method === "POST") {
+    const settings = await getSettings(env, session.user_id);
+    const result = await executeManualReplySweep(env, session.user_id, settings, new Date());
+    return jsonResponse({ result });
+  }
+
+  if (url.pathname === "/api/news/run-now" && method === "POST") {
+    const settings = await getSettings(env, session.user_id);
+    const result = await executeManualNewsPrefill(env, session.user_id, settings, new Date());
     return jsonResponse({ result });
   }
 

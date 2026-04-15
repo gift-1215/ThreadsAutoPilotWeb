@@ -1,4 +1,13 @@
-import { DEFAULT_LLM_MODEL, SUPPORTED_LLM_MODELS } from "./constants";
+import {
+  DEFAULT_NEWS_PROVIDER,
+  DEFAULT_LLM_MODEL_BY_PROVIDER,
+  DEFAULT_LLM_PROVIDER,
+  NewsProvider,
+  LlmProvider,
+  SUPPORTED_NEWS_PROVIDERS,
+  SUPPORTED_LLM_MODELS_BY_PROVIDER,
+  SUPPORTED_LLM_PROVIDERS
+} from "./constants";
 
 export function parseBoolean(value: unknown) {
   if (typeof value === "boolean") {
@@ -11,12 +20,22 @@ export function parseBoolean(value: unknown) {
   return false;
 }
 
-export function sanitizeLlmModel(input: unknown) {
+export function sanitizeLlmProvider(input: unknown): LlmProvider {
   const candidate = String(input || "").trim().toLowerCase();
-  if (SUPPORTED_LLM_MODELS.includes(candidate as (typeof SUPPORTED_LLM_MODELS)[number])) {
+  if (SUPPORTED_LLM_PROVIDERS.includes(candidate as LlmProvider)) {
+    return candidate as LlmProvider;
+  }
+  return DEFAULT_LLM_PROVIDER;
+}
+
+export function sanitizeLlmModel(input: unknown, providerInput: unknown = DEFAULT_LLM_PROVIDER) {
+  const provider = sanitizeLlmProvider(providerInput);
+  const candidate = String(input || "").trim().toLowerCase();
+  const supportedModels = SUPPORTED_LLM_MODELS_BY_PROVIDER[provider] as readonly string[];
+  if (supportedModels.includes(candidate)) {
     return candidate;
   }
-  return DEFAULT_LLM_MODEL;
+  return DEFAULT_LLM_MODEL_BY_PROVIDER[provider];
 }
 
 export function sanitizeText(input: unknown, maxLength = 4000) {
@@ -57,6 +76,48 @@ export function sanitizeReplyTimes(input: unknown, maxItems = 12) {
   }
 
   return [...unique];
+}
+
+export function sanitizeNewsKeywords(input: unknown, maxItems = 8) {
+  const tokens = Array.isArray(input)
+    ? input
+    : String(input || "")
+        .split(/[,，;\n\r\t]+/g)
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+  const unique = new Set<string>();
+  for (const token of tokens) {
+    const cleaned = String(token || "").trim();
+    if (!cleaned) {
+      continue;
+    }
+    unique.add(cleaned.slice(0, 80));
+    if (unique.size >= maxItems) {
+      break;
+    }
+  }
+
+  return [...unique];
+}
+
+export function sanitizeNewsMaxItems(input: unknown, min = 1, max = 10) {
+  const value = Number(input);
+  if (!Number.isFinite(value)) {
+    return 5;
+  }
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+export function sanitizeNewsProvider(input: unknown): NewsProvider {
+  const candidate = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_");
+  if (SUPPORTED_NEWS_PROVIDERS.includes(candidate as NewsProvider)) {
+    return candidate as NewsProvider;
+  }
+  return DEFAULT_NEWS_PROVIDER;
 }
 
 export function normalizeDraft(rawText: string) {

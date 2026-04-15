@@ -1,0 +1,4 @@
+ALTER TABLE user_settings ADD COLUMN news_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE user_settings ADD COLUMN news_keywords TEXT NOT NULL DEFAULT '';
+ALTER TABLE user_settings ADD COLUMN news_fetch_time TEXT NOT NULL DEFAULT '08:00';
+ALTER TABLE user_settings ADD COLUMN news_max_items INTEGER NOT NULL DEFAULT 5;

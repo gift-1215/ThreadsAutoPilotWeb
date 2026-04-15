@@ -20,7 +20,7 @@
           </button>
         </div>
         <p>
-          使用者登入後可設定自己的 Threads Token、Gemini API Key、發文偏好與發文時間。系統會每天自動發文。
+          使用者登入後可設定自己的 Threads Token、LLM API Key、發文偏好與發文時間。系統會每天自動發文。
         </p>
       </section>
 
@@ -64,9 +64,13 @@
             ></textarea>
           </label>
 
-          <label class="field fieldWide">
-            <span>Gemini API Key</span>
-            <input id="geminiApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
+          <label class="field">
+            <span>LLM 公司</span>
+            <select id="llmProvider">
+              <option value="gemini">Gemini</option>
+              <option value="chatgpt">ChatGPT</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
           </label>
 
           <label class="field">
@@ -75,6 +79,12 @@
               <option value="gemini-2.5-flash">gemini-2.5-flash（較便宜）</option>
               <option value="gemini-2.5-pro">gemini-2.5-pro（較強）</option>
             </select>
+          </label>
+
+          <label class="field fieldWide">
+            <span id="llmApiKeyLabel">Gemini API Key</span>
+            <input id="geminiApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
+            <p id="llmApiKeyHint" class="hint">請填入所選模型公司的 API Key。</p>
           </label>
 
           <label class="field fieldWide">
@@ -120,9 +130,45 @@
             <input id="replyTimes" type="text" placeholder="12:30, 18:45" />
           </label>
 
+          <label class="field fieldWide">
+            <span>新聞關鍵字（可多個，逗號分隔）</span>
+            <input id="newsKeywords" type="text" placeholder="AI, 台股, 半導體" />
+            <p class="hint">系統會以這些關鍵字抓近 2 天全域新聞（不限制語言與地區）並摘要後產生草稿。</p>
+          </label>
+
+          <label class="field">
+            <span>新聞來源</span>
+            <select id="newsProvider">
+              <option value="google_rss">Google News RSS（推薦）</option>
+              <option value="auto">自動（先 RSS，失敗再 GNews）</option>
+              <option value="gnews">GNews API</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>每日抓新聞時間</span>
+            <input id="newsFetchTime" type="time" />
+          </label>
+
+          <label class="field">
+            <span>每次抓取新聞則數</span>
+            <select id="newsMaxItems">
+              <option value="3">3</option>
+              <option value="5">5</option>
+              <option value="8">8</option>
+              <option value="10">10</option>
+            </select>
+          </label>
+
+          <label class="field switchField fieldWide">
+            <input id="newsEnabled" type="checkbox" />
+            <span>啟用每日新聞摘要草稿</span>
+          </label>
+
           <label class="field">
             <span>時區</span>
-            <input id="timezone" type="text" placeholder="Asia/Taipei" />
+            <select id="timezone"></select>
+            <p class="hint">建議選擇 Asia/Taipei</p>
           </label>
 
           <label class="field switchField fieldWide">
@@ -132,6 +178,7 @@
 
           <div class="actions fieldWide">
             <button id="saveBtn" type="submit" class="btn primary">儲存設定</button>
+            <button id="runNewsNowBtn" type="button" class="btn ctaSoft">立即抓新聞草稿</button>
           </div>
 
           <div id="loadingIndicator" class="loading hidden fieldWide">
@@ -157,9 +204,19 @@
         <p id="draftEditStatus" class="hint">尚未有可編輯草稿。</p>
         <div class="actions">
           <button id="generateDraftBtn" type="button" class="btn ctaSoft">產生草稿</button>
-          <button id="regenerateDraftBtn" type="button" class="btn ghost">重新產生草稿</button>
           <button id="publishDraftBtn" type="button" class="btn ctaStrong">發佈草稿</button>
+          <button id="manualReplyBtn" type="button" class="btn">回覆留言</button>
+          <button id="regenerateDraftBtn" type="button" class="btn ghost">重新產生草稿</button>
         </div>
+        <section id="newsFetchResultCard" class="newsResult hidden">
+          <div class="newsResultHead">
+            <h3>新聞抓取結果（本次）</h3>
+            <span id="newsFetchStatusTag" class="statusTag skipped">skipped</span>
+          </div>
+          <p id="newsFetchResultMeta" class="hint">尚未執行「立即抓新聞草稿」。</p>
+          <ul id="newsFetchAttemptList" class="newsAttemptList"></ul>
+          <div id="newsFetchArticleList" class="newsArticleList"></div>
+        </section>
         <pre id="nextDraftPreview" class="draftBox">目前沒有待發草稿。</pre>
       </section>
 

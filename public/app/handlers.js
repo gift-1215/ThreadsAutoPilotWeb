@@ -5,6 +5,7 @@ import { flushDraftSave, scheduleDraftSave } from "./draft.js";
 import { el, state } from "./state.js";
 import {
   collectSettings,
+  renderNewsFetchResult,
   renderPendingDraft,
   rerenderRuns,
   renderRuns,
@@ -13,7 +14,9 @@ import {
   setAuthView,
   setDraftEditStatus,
   setLoading,
-  showToast
+  setManualReplyLoading,
+  showToast,
+  syncLlmProviderUi
 } from "./ui.js";
 import { validateDraftText } from "./validation.js";
 
@@ -74,6 +77,24 @@ export function attachEventListeners() {
     });
   }
 
+  if (el.runNewsNowBtn) {
+    el.runNewsNowBtn.addEventListener("click", async () => {
+      setLoading(true, "正在抓取近兩天新聞並整理草稿...");
+      try {
+        const resp = await api("/api/news/run-now", { method: "POST", body: "{}" });
+        const result = resp.result || {};
+        renderNewsFetchResult(result);
+        showToast(result.message || "已完成新聞草稿更新", 5000);
+        await refreshRunsAndPending();
+        setActiveStep("draft");
+      } catch (error) {
+        showToast(`新聞草稿生成失敗：${error.message}`, 5000);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+
   if (el.regenerateDraftBtn) {
     el.regenerateDraftBtn.addEventListener("click", async () => {
       setLoading(true, "正在重新產生草稿，請稍候...");
@@ -118,6 +139,27 @@ export function attachEventListeners() {
         showToast(`發文失敗：${error.message}`, 5000);
       } finally {
         setLoading(false);
+      }
+    });
+  }
+
+  if (el.manualReplyBtn) {
+    el.manualReplyBtn.addEventListener("click", async () => {
+      if (state.manualReplyLoading) {
+        return;
+      }
+      setManualReplyLoading(true);
+      showToast("正在掃描留言並自動回覆，你可繼續操作其他功能。", 4000);
+      try {
+        const resp = await api("/api/replies/scan-now", { method: "POST", body: "{}" });
+        const result = resp.result || {};
+        showToast(result.message || "留言掃描與回覆已完成", 5000);
+        await refreshRunsAndPending();
+        setActiveStep("runs");
+      } catch (error) {
+        showToast(`回覆留言失敗：${error.message}`, 5000);
+      } finally {
+        setManualReplyLoading(false);
       }
     });
   }
@@ -181,6 +223,19 @@ export function attachEventListeners() {
   if (el.runSearchInput) {
     el.runSearchInput.addEventListener("input", () => {
       rerenderRuns();
+    });
+  }
+
+  if (el.timezone) {
+    el.timezone.addEventListener("change", () => {
+      state.displayTimezone = (el.timezone.value || "").trim() || "Asia/Taipei";
+      rerenderRuns();
+    });
+  }
+
+  if (el.llmProvider) {
+    el.llmProvider.addEventListener("change", () => {
+      syncLlmProviderUi(el.llmProvider?.value || "gemini", el.llmModel?.value || "");
     });
   }
 

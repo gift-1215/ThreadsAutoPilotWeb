@@ -1,5 +1,5 @@
 import { Env, PendingDraftRow, RunRow, StoredSettings } from "./types";
-import { randomId, sanitizeLlmModel, sanitizePostTime } from "./utils";
+import { randomId, sanitizeLlmModel } from "./utils";
 
 const MAX_RUN_HISTORY = 30;
 
@@ -76,7 +76,7 @@ export async function upsertPendingDraft(
     .bind(
       userId,
       draft,
-      sanitizeLlmModel(settings.llmModel),
+      sanitizeLlmModel(settings.llmModel, settings.llmProvider),
       settings.enableGrounding ? 1 : 0
     )
     .run();
@@ -84,19 +84,6 @@ export async function upsertPendingDraft(
 
 export async function deletePendingDraft(env: Env, userId: number) {
   await env.DB.prepare("DELETE FROM pending_drafts WHERE user_id = ?").bind(userId).run();
-}
-
-export function collectScheduleTimes(settings: StoredSettings) {
-  const unique = new Set<string>();
-  unique.add(sanitizePostTime(settings.postTime));
-  for (const value of settings.replyTimes) {
-    const normalized = sanitizePostTime(value);
-    if (normalized === "09:00" && value !== "09:00") {
-      continue;
-    }
-    unique.add(normalized);
-  }
-  return [...unique];
 }
 
 export async function insertRun(

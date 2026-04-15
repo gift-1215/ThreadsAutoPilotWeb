@@ -1,5 +1,5 @@
 import { api } from "./api-client.js";
-import { fillSettings, renderPendingDraft, renderRuns } from "./ui.js";
+import { fillSettings, renderNewsFetchResult, renderPendingDraft, renderRuns } from "./ui.js";
 
 export async function refreshRunsAndPending() {
   const [runsResp, pendingResp] = await Promise.all([
@@ -19,4 +19,5 @@ export async function loadAllData() {
   fillSettings(settingsResp.settings || {});
   renderRuns(runsResp.runs || []);
   renderPendingDraft(pendingResp.pendingDraft || null);
+  renderNewsFetchResult(null);
 }

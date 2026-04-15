@@ -3,7 +3,7 @@ import { api } from "./api-client.js";
 import { attachEventListeners } from "./handlers.js";
 import { state } from "./state.js";
 import { initThemeToggle } from "./theme.js";
-import { showToast } from "./ui.js";
+import { initTimezoneOptions, showToast } from "./ui.js";
 
 async function bootstrap() {
   try {
@@ -18,6 +18,7 @@ async function bootstrap() {
 
 export function initApp() {
   initThemeToggle();
+  initTimezoneOptions();
   attachEventListeners();
   void bootstrap();
 }

@@ -4,6 +4,7 @@
 
 - Google 登入
 - GUI 設定頁（Threads token / Gemini API key / LLM 模型 / Grounding 開關 / 發文指令 / 發文風格 / 發文時間）
+- GUI 設定頁（含新聞關鍵字、每日抓新聞時間、抓取筆數）
 - 手動測試發文
 - Cloudflare Cron 每 5 分鐘巡檢，依使用者時區與時間自動發文
 - D1 儲存使用者設定與執行紀錄
@@ -40,6 +41,14 @@ npx wrangler d1 migrations apply threads_autopilot --remote
 1. 直接改 [wrangler.jsonc](/Users/liwu/Documents/Project/threads-autopilot-web/wrangler.jsonc) 的 `vars.GOOGLE_CLIENT_ID`
 2. 或建立 `.dev.vars`（可參考 [.dev.vars.example](/Users/liwu/Documents/Project/threads-autopilot-web/.dev.vars.example)）
 
+另外，新聞功能需設定 GNews API Key：
+
+```bash
+npx wrangler secret put GNEWS_API_KEY
+```
+
+本地開發可放在 `.dev.vars`。
+
 ## 5. 本地啟動
 
 ```bash
@@ -68,6 +77,7 @@ npm run deploy
 - `DELETE /api/pending-draft`（草稿清空時同步清除待發草稿）
 - `POST /api/pending-draft/regenerate`
 - `POST /api/pending-draft/publish`
+- `POST /api/news/run-now`（立即抓近兩天新聞並生成草稿）
 - `GET /api/runs?limit=30`
 - `DELETE /api/runs`（一鍵清除執行紀錄）
 
