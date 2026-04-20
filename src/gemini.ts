@@ -15,6 +15,13 @@ const PROVIDER_LABEL: Record<LlmProvider, string> = {
   chatgpt: "ChatGPT",
   anthropic: "Anthropic"
 };
+const MAX_HISTORY_DRAFTS = 8;
+const MAX_HISTORY_QUOTES = 10;
+const MAX_HISTORY_OPENINGS = 6;
+
+interface PostGenerationOptions {
+  recentDrafts?: string[];
+}
 
 function resolveProvider(settings: StoredSettings): LlmProvider {
   return sanitizeLlmProvider(settings.llmProvider || DEFAULT_LLM_PROVIDER);
@@ -24,7 +31,176 @@ function providerLabel(provider: LlmProvider) {
   return PROVIDER_LABEL[provider] || "LLM";
 }
 
-function buildPostPrompt(settings: StoredSettings, runDate: string, context = "") {
+function normalizeCompareText(input: string) {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(
+      /[\s`~!@#$%^&*()_\-+=|\\[\]{}:;"'<>,.?/「」『』（）【】《》〈〉、，。！？：；…“”‘’]/g,
+      ""
+    );
+}
+
+function clipText(input: string, maxLength: number) {
+  const text = String(input || "").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function extractOpeningLine(text: string) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) {
+    return "";
+  }
+  return clipText(lines[0], 80);
+}
+
+function extractQuotedSentences(text: string, maxItems = 8) {
+  const patterns = [
+    /「([^「」\n]{8,220})」/g,
+    /『([^『』\n]{8,220})』/g,
+    /“([^“”\n]{8,220})”/g,
+    /"([^"\n]{8,220})"/g
+  ];
+  const unique = new Map<string, string>();
+  for (const pattern of patterns) {
+    for (const match of String(text || "").matchAll(pattern)) {
+      const sentence = String(match[1] || "").trim().replace(/\s+/g, " ");
+      if (!sentence) {
+        continue;
+      }
+      const normalized = normalizeCompareText(sentence);
+      if (!normalized || unique.has(normalized)) {
+        continue;
+      }
+      unique.set(normalized, sentence);
+      if (unique.size >= maxItems) {
+        return [...unique.values()];
+      }
+    }
+  }
+  return [...unique.values()];
+}
+
+function prepareHistoryHints(recentDraftsInput: string[]) {
+  const recentDrafts = recentDraftsInput
+    .map((draft) => String(draft || "").trim())
+    .filter(Boolean)
+    .slice(0, MAX_HISTORY_DRAFTS);
+  const quoteSet = new Map<string, string>();
+  const openings: string[] = [];
+
+  for (const draft of recentDrafts) {
+    const opening = extractOpeningLine(draft);
+    if (opening) {
+      openings.push(opening);
+    }
+    const quotes = extractQuotedSentences(draft, 6);
+    for (const quote of quotes) {
+      const key = normalizeCompareText(quote);
+      if (!key || quoteSet.has(key)) {
+        continue;
+      }
+      quoteSet.set(key, quote);
+      if (quoteSet.size >= MAX_HISTORY_QUOTES) {
+        break;
+      }
+    }
+    if (quoteSet.size >= MAX_HISTORY_QUOTES) {
+      break;
+    }
+  }
+
+  return {
+    recentDrafts,
+    recentQuotes: [...quoteSet.values()],
+    recentOpenings: openings.slice(0, MAX_HISTORY_OPENINGS)
+  };
+}
+
+function buildAntiRepeatPrompt(recentDrafts: string[]) {
+  const hints = prepareHistoryHints(recentDrafts);
+  if (!hints.recentDrafts.length) {
+    return "";
+  }
+
+  const lines = [
+    "避免重複規則（務必遵守）：",
+    "- 可以引用同一本書，但不可重複使用近期已出現過的同一句引文。",
+    "- 若要談同一本書，請改用不同段落、不同觀點，或改成你自己的轉述。",
+    "- 開頭句與核心觀點需和近期貼文有明顯差異。"
+  ];
+
+  if (hints.recentQuotes.length) {
+    lines.push(
+      "近期已使用引文（以下句子禁止再次逐字使用）：",
+      ...hints.recentQuotes.map((quote, index) => `${index + 1}. 「${clipText(quote, 88)}」`)
+    );
+  }
+
+  if (hints.recentOpenings.length) {
+    lines.push(
+      "近期貼文開頭參考（請避免相同開場句型）：",
+      ...hints.recentOpenings.map((opening, index) => `${index + 1}. ${opening}`)
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function findRepeatIssue(draft: string, recentDrafts: string[]) {
+  const hints = prepareHistoryHints(recentDrafts);
+  if (!hints.recentDrafts.length) {
+    return "";
+  }
+
+  const bannedQuoteMap = new Map(
+    hints.recentQuotes.map((quote) => [normalizeCompareText(quote), quote] as const)
+  );
+  const currentQuotes = extractQuotedSentences(draft, 8);
+  for (const quote of currentQuotes) {
+    const key = normalizeCompareText(quote);
+    const matched = bannedQuoteMap.get(key);
+    if (matched) {
+      return `引用句與近期貼文重複：${clipText(matched, 42)}`;
+    }
+  }
+
+  const opening = extractOpeningLine(draft);
+  const openingKey = normalizeCompareText(opening);
+  if (openingKey) {
+    const duplicatedOpening = hints.recentOpenings.some(
+      (existing) => normalizeCompareText(existing) === openingKey
+    );
+    if (duplicatedOpening) {
+      return "開頭句與近期貼文重複，請換一個新的切入點。";
+    }
+  }
+
+  const draftKey = normalizeCompareText(draft);
+  if (draftKey) {
+    const duplicatedContent = hints.recentDrafts.some(
+      (existing) => normalizeCompareText(existing) === draftKey
+    );
+    if (duplicatedContent) {
+      return "整篇內容與近期貼文幾乎相同，請改用不同觀點重寫。";
+    }
+  }
+
+  return "";
+}
+
+function buildPostPrompt(
+  settings: StoredSettings,
+  runDate: string,
+  context = "",
+  options: PostGenerationOptions = {}
+) {
   const instruction =
     settings.postInstruction || "請產生一篇適合 Threads 的貼文，內容清楚且有可讀性。";
   const style = settings.postStyle || "自然、真誠、繁體中文。";
@@ -40,6 +216,7 @@ function buildPostPrompt(settings: StoredSettings, runDate: string, context = ""
         `近期新聞摘要：\n${contextBlock}`
       ]
     : [];
+  const antiRepeatPrompt = buildAntiRepeatPrompt(options.recentDrafts || []);
 
   return [
     "你是社群貼文助理，請以繁體中文撰寫一篇可直接發佈到 Threads 的貼文。",
@@ -50,6 +227,7 @@ function buildPostPrompt(settings: StoredSettings, runDate: string, context = ""
     "- 不要輸出 JSON、不要輸出 Markdown code block",
     "- 不要輸出簡體中文",
     groundingHint,
+    antiRepeatPrompt,
     `使用者指令：${instruction}`,
     `使用者風格：${style}`,
     `今天日期（使用者時區）：${runDate}`,
@@ -374,14 +552,15 @@ async function callProviderGenerateText(settings: StoredSettings, prompt: string
 async function generatePostDraftWithOptionalContext(
   settings: StoredSettings,
   runDate: string,
-  context: string
+  context: string,
+  options: PostGenerationOptions = {}
 ) {
   const provider = resolveProvider(settings);
   let feedback = "";
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const prompt = [
-      buildPostPrompt(settings, runDate, context),
+      buildPostPrompt(settings, runDate, context, options),
       feedback ? `修正要求：${feedback}` : ""
     ]
       .filter(Boolean)
@@ -390,28 +569,34 @@ async function generatePostDraftWithOptionalContext(
     const text = await callProviderGenerateText(settings, prompt);
     const draft = normalizeDraft(text);
     const invalidReason = validateDraft(draft);
+    const repeatReason = findRepeatIssue(draft, options.recentDrafts || []);
 
-    if (!invalidReason) {
+    if (!invalidReason && !repeatReason) {
       return draft;
     }
 
-    feedback = invalidReason;
+    feedback = invalidReason || repeatReason;
   }
 
   throw new Error(`${providerLabel(provider)} 連續產生不符合格式的內容，請調整發文偏好後重試。`);
 }
 
-export async function generatePostDraft(settings: StoredSettings, runDate: string) {
-  return generatePostDraftWithOptionalContext(settings, runDate, "");
+export async function generatePostDraft(
+  settings: StoredSettings,
+  runDate: string,
+  recentDrafts: string[] = []
+) {
+  return generatePostDraftWithOptionalContext(settings, runDate, "", { recentDrafts });
 }
 
 export async function generatePostDraftFromContext(
   settings: StoredSettings,
   runDate: string,
-  context: string
+  context: string,
+  recentDrafts: string[] = []
 ) {
   const safeContext = String(context || "").trim().slice(0, 6000);
-  return generatePostDraftWithOptionalContext(settings, runDate, safeContext);
+  return generatePostDraftWithOptionalContext(settings, runDate, safeContext, { recentDrafts });
 }
 
 export async function generateCommentReply(

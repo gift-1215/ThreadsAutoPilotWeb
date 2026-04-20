@@ -1,7 +1,7 @@
 import { generatePostDraftFromContext } from "./gemini";
 import { saveNewsSnapshot } from "./news-snapshots";
 import { resolveRunDate } from "./posting";
-import { getPendingDraft, insertRun, upsertPendingDraft } from "./runs";
+import { getPendingDraft, insertRun, listRecentSuccessfulDrafts, upsertPendingDraft } from "./runs";
 import {
   Env,
   NewsPreviewArticle,
@@ -950,7 +950,13 @@ async function executeNewsPrefill(
       return { runId, status: "success", message, runType, runDate, newsPreview };
     }
 
-    const draft = await generatePostDraftFromContext(settings, localNow.dateKey, context);
+    const recentDrafts = await listRecentSuccessfulDrafts(env, userId, 12);
+    const draft = await generatePostDraftFromContext(
+      settings,
+      localNow.dateKey,
+      context,
+      recentDrafts
+    );
     await upsertPendingDraft(env, userId, draft, settings);
 
     const message = [

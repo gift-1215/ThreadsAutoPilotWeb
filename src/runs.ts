@@ -35,6 +35,26 @@ export async function listRuns(env: Env, userId: number, limit = 20) {
   return query.results || [];
 }
 
+export async function listRecentSuccessfulDrafts(env: Env, userId: number, limit = 12) {
+  const safeLimit = Math.min(MAX_RUN_HISTORY, Math.max(1, Number(limit) || 12));
+  const query = await env.DB.prepare(
+    `SELECT draft
+     FROM post_runs
+     WHERE user_id = ?
+       AND status = 'success'
+       AND draft IS NOT NULL
+       AND trim(draft) <> ''
+     ORDER BY datetime(created_at) DESC, id DESC
+     LIMIT ?`
+  )
+    .bind(userId, safeLimit)
+    .all<{ draft: string | null }>();
+
+  return (query.results || [])
+    .map((row) => String(row.draft || "").trim())
+    .filter(Boolean);
+}
+
 export async function deleteRuns(env: Env, userId: number) {
   const result = await env.DB.prepare("DELETE FROM post_runs WHERE user_id = ?").bind(userId).run();
   return Number(result.meta?.changes || 0);

@@ -6,6 +6,7 @@ import {
   deletePendingDraft,
   getPendingDraft,
   insertRun,
+  listRecentSuccessfulDrafts,
   upsertPendingDraft
 } from "./runs";
 import { publishToThreads } from "./threads";
@@ -42,22 +43,23 @@ export async function createPreviewDraft(
   }
 
   try {
+    const recentDrafts = await listRecentSuccessfulDrafts(env, userId, 12);
     let draft = "";
     let usedNewsSnapshot = false;
     try {
       const snapshot = await getNewsSnapshot(env, userId);
       const snapshotContext = String(snapshot?.contextText || "").trim();
       if (snapshotContext) {
-        draft = await generatePostDraftFromContext(settings, runDate, snapshotContext);
+        draft = await generatePostDraftFromContext(settings, runDate, snapshotContext, recentDrafts);
         usedNewsSnapshot = true;
       } else {
-        draft = await generatePostDraft(settings, runDate);
+        draft = await generatePostDraft(settings, runDate, recentDrafts);
       }
     } catch (error) {
       if (!isMissingNewsSnapshotTable(error)) {
         throw error;
       }
-      draft = await generatePostDraft(settings, runDate);
+      draft = await generatePostDraft(settings, runDate, recentDrafts);
     }
 
     await upsertPendingDraft(env, userId, draft, settings);
@@ -186,7 +188,8 @@ export async function executeScheduledPosting(
 
   if (!draft) {
     try {
-      draft = await generatePostDraft(settings, localNow.dateKey);
+      const recentDrafts = await listRecentSuccessfulDrafts(env, userId, 12);
+      draft = await generatePostDraft(settings, localNow.dateKey, recentDrafts);
     } catch (error) {
       const message = safeErrorMessage(error);
       const runId = await insertRun(env, userId, "scheduled", localNow.dateKey, "failed", message);
@@ -231,7 +234,8 @@ export async function ensureNextDraftForScheduledWindow(
   }
 
   try {
-    const draft = await generatePostDraft(settings, runDate);
+    const recentDrafts = await listRecentSuccessfulDrafts(env, userId, 12);
+    const draft = await generatePostDraft(settings, runDate, recentDrafts);
     await upsertPendingDraft(env, userId, draft, settings);
     await insertRun(
       env,
