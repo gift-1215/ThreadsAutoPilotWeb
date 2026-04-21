@@ -3,6 +3,7 @@ import { executeManualNewsPrefill } from "../news";
 import { executeManualReplySweep } from "../replies";
 import { deletePendingDraft, deleteRuns, getPendingDraft, listRuns, upsertPendingDraft } from "../runs";
 import { getSettings, normalizeIncomingSettings, saveSettings } from "../settings";
+import { refreshLongLivedThreadsToken } from "../threads";
 import { Env, SessionRow } from "../types";
 import {
   jsonResponse,
@@ -41,6 +42,33 @@ export async function handleUserApiRoutes(
     const normalized = normalizeIncomingSettings(env, payload);
     await saveSettings(env, session.user_id, normalized);
     return jsonResponse({ ok: true, settings: normalized });
+  }
+
+  if (url.pathname === "/api/threads/token/refresh" && method === "POST") {
+    const payload = await parseOptionalJsonBody<{ threadsToken?: unknown }>(request, {});
+    const tokenFromPayload = sanitizeText(payload.threadsToken, 4000);
+    const settings = await getSettings(env, session.user_id);
+    const tokenToRefresh = tokenFromPayload || settings.threadsToken;
+
+    if (!tokenToRefresh) {
+      return jsonResponse({ error: "請先填入 Threads long-lived token。" }, 400);
+    }
+
+    const refreshed = await refreshLongLivedThreadsToken(tokenToRefresh);
+    const updatedSettings = { ...settings, threadsToken: refreshed.accessToken };
+    await saveSettings(env, session.user_id, updatedSettings);
+
+    const expiresAt =
+      refreshed.expiresIn > 0
+        ? new Date(Date.now() + refreshed.expiresIn * 1000).toISOString()
+        : "";
+
+    return jsonResponse({
+      ok: true,
+      threadsToken: refreshed.accessToken,
+      expiresIn: refreshed.expiresIn,
+      expiresAt
+    });
   }
 
   if (url.pathname === "/api/runs" && method === "GET") {

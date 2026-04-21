@@ -18,6 +18,12 @@ export interface ThreadsReply {
   replyToId: string;
 }
 
+export interface ThreadsTokenRefreshResult {
+  accessToken: string;
+  tokenType: string;
+  expiresIn: number;
+}
+
 export async function fetchThreadsMe(accessToken: string): Promise<ThreadsProfile> {
   const url = new URL("https://graph.threads.net/v1.0/me");
   url.searchParams.set("fields", "id,username");
@@ -39,6 +45,41 @@ export async function fetchThreadsMe(accessToken: string): Promise<ThreadsProfil
   }
 
   return { id, username };
+}
+
+export async function refreshLongLivedThreadsToken(
+  accessToken: string
+): Promise<ThreadsTokenRefreshResult> {
+  const safeToken = String(accessToken || "").trim();
+  if (!safeToken) {
+    throw new Error("缺少 Threads token");
+  }
+
+  const url = new URL("https://graph.threads.net/refresh_access_token");
+  url.searchParams.set("grant_type", "th_refresh_token");
+  url.searchParams.set("access_token", safeToken);
+
+  const response = await fetch(url.toString());
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const errorObject = payload.error as { message?: string } | undefined;
+    throw new Error(errorObject?.message || `Threads token 刷新失敗 (${response.status})`);
+  }
+
+  const refreshedToken = asString(payload.access_token);
+  if (!refreshedToken) {
+    throw new Error("Threads token 刷新失敗（缺少 access_token）");
+  }
+
+  const expiresInRaw = Number(payload.expires_in);
+  const expiresIn =
+    Number.isFinite(expiresInRaw) && expiresInRaw > 0 ? Math.floor(expiresInRaw) : 0;
+
+  return {
+    accessToken: refreshedToken,
+    tokenType: asString(payload.token_type) || "bearer",
+    expiresIn
+  };
 }
 
 async function threadsGet(url: string) {

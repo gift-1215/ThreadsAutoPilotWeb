@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>網站說明 | Threads Autopilot</title>
+    <script>
+      (() => {
+        const savedTheme = localStorage.getItem("taw-theme");
+        const prefersDark =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = savedTheme === "dark" || (savedTheme !== "light" && prefersDark) ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero card">
+        <div class="heroHead">
+          <div>
+            <p class="heroBadge">Guide</p>
+            <h1>Threads Autopilot 網站說明</h1>
+          </div>
+          <div class="heroActions">
+            <a class="btn ghost" href="/">回到控制台</a>
+            <button id="themeToggleBtn" class="themeToggle" type="button" aria-pressed="false">
+              切換深色
+            </button>
+          </div>
+        </div>
+        <p>本頁以條列方式說明本網站的完整運作流程與注意事項。</p>
+      </section>
+
+      <section class="card guideSection">
+        <h2>網站運作方式</h2>
+        <ul class="guideList">
+          <li>使用者先以 Google 帳號登入，系統建立 session 後才會開放設定與操作功能。</li>
+          <li>「設定」頁會儲存你的 Threads Token、三階段 LLM 設定、時區、發文時間、留言回覆時間與新聞抓取參數。</li>
+          <li>按下「儲存設定」後，後端會把設定寫入資料庫；未儲存變更不會被排程與手動執行使用。</li>
+          <li>你可以使用「更新長效 Token」直接刷新 Threads long-lived token，系統會更新並寫回目前帳號設定。</li>
+          <li>「產生草稿」會依你目前已儲存的設定，觸發後端流程產生下一篇待發草稿。</li>
+          <li>草稿區支援直接編輯與自動儲存；若草稿不合法（空白、過長、JSON 格式）會阻擋儲存與發佈。</li>
+          <li>啟用配圖時，可用「生成新聞圖片」為目前草稿補上圖片，發佈時會一起送到 Threads。</li>
+          <li>「立即抓取新聞」只更新新聞摘要與來源結果，供後續草稿生成使用，不會直接發文。</li>
+          <li>「回覆留言」會執行留言掃描與自動回覆流程，執行結果會寫入紀錄頁。</li>
+          <li>「發佈草稿」會把目前草稿（與配圖）送到 Threads，成功後清除待發草稿並保留執行紀錄。</li>
+          <li>「紀錄」頁可篩選成功/失敗/略過，並可搜尋關鍵字；系統目前保留最近 30 筆紀錄。</li>
+          <li>Danger Zone 的「一鍵清除發文紀錄」需輸入 CLEAR 才能執行，避免誤刪。</li>
+        </ul>
+      </section>
+
+      <section class="card guideSection">
+        <h2>開發者聯絡方式</h2>
+        <ul class="guideList">
+          <li>姓名：李務</li>
+          <li>系所：NCKU CSIE</li>
+          <li>
+            Gmail/Line:wulee1215@gmail.com（
+            <a href="mailto:wulee1215@gmail.com">wulee1215@gmail.com</a>
+            ）
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const themeToggleBtn = document.querySelector("#themeToggleBtn");
+        if (!themeToggleBtn) {
+          return;
+        }
+
+        const updateThemeButton = (theme) => {
+          const isDark = theme === "dark";
+          themeToggleBtn.textContent = isDark ? "切換淺色" : "切換深色";
+          themeToggleBtn.setAttribute("aria-pressed", String(isDark));
+        };
+
+        const applyTheme = (theme) => {
+          document.documentElement.setAttribute("data-theme", theme);
+          localStorage.setItem("taw-theme", theme);
+          updateThemeButton(theme);
+        };
+
+        const currentTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+        updateThemeButton(currentTheme);
+        themeToggleBtn.addEventListener("click", () => {
+          const nowTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+          applyTheme(nowTheme === "dark" ? "light" : "dark");
+        });
+      })();
+    </script>
+  </body>
+</html>

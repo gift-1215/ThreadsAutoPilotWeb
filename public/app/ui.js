@@ -164,7 +164,7 @@ function formatInTimezone(value, timezone = state.displayTimezone || DEFAULT_TIM
       second: "2-digit",
       hour12: false
     });
-    return formatter.format(date).replace(" ", " ");
+    return formatter.format(date);
   } catch {
     return String(value || "");
   }
@@ -328,10 +328,6 @@ export function syncStageLlmProviderUi(stage, provider, preferredModel = "") {
   return { provider: safeProvider, model: selectedModel };
 }
 
-export function syncLlmProviderUi(provider, preferredModel = "") {
-  return syncStageLlmProviderUi("draft", provider, preferredModel);
-}
-
 export function setManualReplyLoading(isLoading) {
   state.manualReplyLoading = Boolean(isLoading);
   if (!el.manualReplyBtn) {
@@ -351,44 +347,60 @@ export function setManualReplyLoading(isLoading) {
 }
 
 export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
-  state.isLoading = isLoading;
+  state.isLoading = Boolean(isLoading);
+  const isBusy = state.isLoading || state.manualReplyLoading;
 
   if (el.saveBtn) {
-    el.saveBtn.disabled = isLoading;
+    el.saveBtn.disabled = isBusy;
+  }
+  if (el.refreshThreadsTokenBtn) {
+    el.refreshThreadsTokenBtn.disabled = isBusy;
   }
   if (el.generateDraftBtn) {
-    el.generateDraftBtn.disabled = isLoading;
+    el.generateDraftBtn.disabled = isBusy;
   }
   if (el.generateDraftImageBtn) {
-    el.generateDraftImageBtn.disabled = isLoading || !state.hasPendingDraft;
+    el.generateDraftImageBtn.disabled = isBusy || !state.hasPendingDraft;
   }
   if (el.runNewsNowBtn) {
-    el.runNewsNowBtn.disabled = isLoading;
+    el.runNewsNowBtn.disabled = isBusy;
   }
   if (el.reloadRunsBtn) {
-    el.reloadRunsBtn.disabled = isLoading;
+    el.reloadRunsBtn.disabled = isBusy;
   }
   if (el.clearRunsBtn) {
-    el.clearRunsBtn.disabled = isLoading || !isClearRunsReady();
+    el.clearRunsBtn.disabled = isBusy || !isClearRunsReady();
   }
   if (el.clearRunsConfirmText) {
-    el.clearRunsConfirmText.disabled = isLoading;
+    el.clearRunsConfirmText.disabled = isBusy;
   }
   if (el.publishDraftBtn) {
-    el.publishDraftBtn.disabled = isLoading || !state.hasPendingDraft;
+    el.publishDraftBtn.disabled = isBusy || !state.hasPendingDraft;
   }
   if (el.manualReplyBtn) {
-    el.manualReplyBtn.disabled = isLoading || state.manualReplyLoading;
+    el.manualReplyBtn.disabled = isBusy;
+  }
+  if (el.logoutBtn) {
+    el.logoutBtn.disabled = isBusy;
+  }
+  if (el.stepTabSettings) {
+    el.stepTabSettings.disabled = isBusy;
+  }
+  if (el.stepTabDraft) {
+    el.stepTabDraft.disabled = isBusy;
+  }
+  if (el.stepTabRuns) {
+    el.stepTabRuns.disabled = isBusy;
   }
 
   if (el.loadingIndicator) {
-    el.loadingIndicator.classList.toggle("hidden", !isLoading);
+    el.loadingIndicator.classList.toggle("hidden", !state.isLoading);
   }
   if (el.loadingText) {
     el.loadingText.textContent = text;
   }
   if (el.activityIndicator) {
-    el.activityIndicator.classList.toggle("hidden", !isLoading);
+    el.activityIndicator.classList.toggle("hidden", !state.isLoading);
   }
   if (el.activityText) {
     el.activityText.textContent = text || "作業進行中...";
@@ -715,9 +727,12 @@ function applyStepVisibility(isAuthed) {
     for (const step of STEPS) {
       if (panelMap[step]) {
         panelMap[step].classList.add("hidden");
+        panelMap[step].setAttribute("aria-hidden", "true");
       }
       if (tabMap[step]) {
         tabMap[step].classList.remove("active");
+        tabMap[step].setAttribute("aria-selected", "false");
+        tabMap[step].tabIndex = -1;
       }
     }
     return;
@@ -730,10 +745,15 @@ function applyStepVisibility(isAuthed) {
   const activeStep = STEPS.includes(state.activeStep) ? state.activeStep : "settings";
   for (const step of STEPS) {
     if (panelMap[step]) {
-      panelMap[step].classList.toggle("hidden", step !== activeStep);
+      const hidden = step !== activeStep;
+      panelMap[step].classList.toggle("hidden", hidden);
+      panelMap[step].setAttribute("aria-hidden", hidden ? "true" : "false");
     }
     if (tabMap[step]) {
-      tabMap[step].classList.toggle("active", step === activeStep);
+      const selected = step === activeStep;
+      tabMap[step].classList.toggle("active", selected);
+      tabMap[step].setAttribute("aria-selected", selected ? "true" : "false");
+      tabMap[step].tabIndex = selected ? 0 : -1;
     }
   }
 }

@@ -89,6 +89,18 @@ body {
   align-items: flex-start;
 }
 
+.heroActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.heroGuideLink {
+  white-space: nowrap;
+}
+
 .heroBadge {
   width: fit-content;
   margin: 0 0 10px;
@@ -200,6 +212,17 @@ body {
 
 .fieldWide {
   grid-column: 1 / -1;
+}
+
+.tokenActionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tokenActionRow .hint {
+  flex: 1 1 360px;
 }
 
 .settingsSaveReminder {
@@ -530,6 +553,10 @@ textarea {
   padding: 9px 14px;
   cursor: pointer;
   transition: transform 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .btn:hover {
@@ -798,6 +825,26 @@ th {
   box-shadow: var(--shadow);
 }
 
+.guideSection h2 {
+  margin: 0 0 12px;
+}
+
+.guideList {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.guideList li {
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.guideList a {
+  color: var(--primary);
+}
+
 .activityIndicator {
   position: fixed;
   top: 14px;
@@ -835,6 +882,10 @@ th {
 }
 
 @media (max-width: 760px) {
+  .heroActions {
+    justify-content: flex-start;
+  }
+
   .grid {
     grid-template-columns: 1fr;
   }

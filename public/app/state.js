@@ -32,6 +32,7 @@ export const el = {
   settingsSaveReminder: document.querySelector("#settingsSaveReminder"),
   settingsSaveReminderText: document.querySelector("#settingsSaveReminderText"),
   threadsToken: document.querySelector("#threadsToken"),
+  refreshThreadsTokenBtn: document.querySelector("#refreshThreadsTokenBtn"),
   newsLlmProvider: document.querySelector("#newsLlmProvider"),
   newsLlmModel: document.querySelector("#newsLlmModel"),
   newsLlmApiKey: document.querySelector("#newsLlmApiKey"),

@@ -15,9 +15,12 @@
             <p class="heroBadge">Beta</p>
             <h1>Threads Autopilot 控制台</h1>
           </div>
-          <button id="themeToggleBtn" class="themeToggle" type="button" aria-pressed="false">
-            切換深色
-          </button>
+          <div class="heroActions">
+            <a class="btn ghost heroGuideLink" href="/guide.html">網站說明</a>
+            <button id="themeToggleBtn" class="themeToggle" type="button" aria-pressed="false">
+              切換深色
+            </button>
+          </div>
         </div>
         <p>
           使用者登入後可設定自己的 Threads Token、LLM API Key、發文偏好與發文時間。系統會每天自動發文。
@@ -32,19 +35,46 @@
 
       <section id="stepNavCard" class="card hidden stepNavCard">
         <div class="stepTabs" role="tablist" aria-label="工作流程分頁">
-          <button id="stepTabSettings" class="stepTab active" type="button" data-step="settings">
+          <button
+            id="stepTabSettings"
+            class="stepTab active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="appCard"
+            tabindex="0"
+            data-step="settings"
+          >
             設定
           </button>
-          <button id="stepTabDraft" class="stepTab" type="button" data-step="draft">
+          <button
+            id="stepTabDraft"
+            class="stepTab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="nextPostCard"
+            tabindex="-1"
+            data-step="draft"
+          >
             草稿
           </button>
-          <button id="stepTabRuns" class="stepTab" type="button" data-step="runs">
+          <button
+            id="stepTabRuns"
+            class="stepTab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="runsCard"
+            tabindex="-1"
+            data-step="runs"
+          >
             紀錄
           </button>
         </div>
       </section>
 
-      <section id="appCard" class="card hidden">
+      <section id="appCard" class="card hidden" role="tabpanel" aria-labelledby="stepTabSettings">
         <header class="cardHeader">
           <div>
             <h2>2. 自動發文設定</h2>
@@ -72,6 +102,14 @@
               rows="3"
               placeholder="貼上你的 Threads Access Token"
             ></textarea>
+            <div class="tokenActionRow">
+              <button id="refreshThreadsTokenBtn" type="button" class="btn ghost">
+                更新長效 Token
+              </button>
+              <p class="hint">
+                可在到期前按這顆按鈕自動更新 long-lived token，並直接寫回設定。
+              </p>
+            </div>
           </label>
 
           <label class="field">
@@ -278,7 +316,7 @@
         </form>
       </section>
 
-      <section id="nextPostCard" class="card hidden">
+      <section id="nextPostCard" class="card hidden" role="tabpanel" aria-labelledby="stepTabDraft">
         <h2>3. 下一篇即將發出的文</h2>
         <p class="hint sectionDesc">先產生草稿，再編輯後發佈</p>
         <p id="nextDraftMeta" class="hint">目前尚未準備下一篇草稿。</p>
@@ -318,7 +356,7 @@
         <pre id="nextDraftPreview" class="draftBox">目前沒有待發草稿。</pre>
       </section>
 
-      <section id="runsCard" class="card hidden">
+      <section id="runsCard" class="card hidden" role="tabpanel" aria-labelledby="stepTabRuns">
         <header class="cardHeader runsHeader">
           <div>
             <h2>4. 最近執行紀錄</h2>

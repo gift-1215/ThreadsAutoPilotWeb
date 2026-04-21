@@ -22,6 +22,26 @@ import {
 import { validateDraftText } from "./validation.js";
 
 const CLEAR_CONFIRM_WORD = "CLEAR";
+const STEP_ITEMS = [
+  { step: "settings", button: el.stepTabSettings },
+  { step: "draft", button: el.stepTabDraft },
+  { step: "runs", button: el.stepTabRuns }
+];
+
+function proceedWithUnsavedSettings(actionLabel) {
+  if (state.settingsSaveState !== "dirty") {
+    return true;
+  }
+
+  const confirmed = window.confirm(
+    `你有尚未儲存的設定變更。\n若繼續「${actionLabel}」，系統會使用最近一次已儲存設定。\n是否繼續？`
+  );
+  if (!confirmed) {
+    showToast("已取消操作，請先儲存設定。", 4000);
+    setActiveStep("settings");
+  }
+  return confirmed;
+}
 
 export function attachEventListeners() {
   if (el.stepTabSettings) {
@@ -39,6 +59,35 @@ export function attachEventListeners() {
   if (el.stepTabRuns) {
     el.stepTabRuns.addEventListener("click", () => {
       setActiveStep("runs");
+    });
+  }
+
+  const stepTabs = STEP_ITEMS.filter((item) => item.button);
+  for (const item of stepTabs) {
+    item.button.addEventListener("keydown", (event) => {
+      const { key } = event;
+      const currentIndex = stepTabs.findIndex((candidate) => candidate.step === item.step);
+      if (currentIndex < 0) {
+        return;
+      }
+
+      let nextIndex = currentIndex;
+      if (key === "ArrowRight") {
+        nextIndex = (currentIndex + 1) % stepTabs.length;
+      } else if (key === "ArrowLeft") {
+        nextIndex = (currentIndex - 1 + stepTabs.length) % stepTabs.length;
+      } else if (key === "Home") {
+        nextIndex = 0;
+      } else if (key === "End") {
+        nextIndex = stepTabs.length - 1;
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      const next = stepTabs[nextIndex];
+      next.button.focus();
+      setActiveStep(next.step);
     });
   }
 
@@ -63,7 +112,7 @@ export function attachEventListeners() {
     });
 
     const markSettingsDirty = () => {
-      if (!state.me || state.isLoading) {
+      if (!state.me || state.isLoading || state.manualReplyLoading) {
         return;
       }
       setSettingsSaveState("dirty");
@@ -72,8 +121,58 @@ export function attachEventListeners() {
     el.settingsForm.addEventListener("change", markSettingsDirty);
   }
 
+  if (el.refreshThreadsTokenBtn) {
+    el.refreshThreadsTokenBtn.addEventListener("click", async () => {
+      const currentToken = String(el.threadsToken?.value || "").trim();
+      if (!currentToken) {
+        showToast("請先貼上 Threads long-lived token。", 4500);
+        return;
+      }
+
+      const wasDirty = state.settingsSaveState === "dirty";
+      setLoading(true, "正在更新 Threads 長效 Token...");
+      try {
+        const resp = await api("/api/threads/token/refresh", {
+          method: "POST",
+          body: JSON.stringify({ threadsToken: currentToken })
+        });
+
+        const refreshedToken = String(resp.threadsToken || "").trim();
+        if (el.threadsToken && refreshedToken) {
+          el.threadsToken.value = refreshedToken;
+        }
+
+        if (!wasDirty) {
+          setSettingsSaveState("saved");
+        }
+
+        const expiresAt = String(resp.expiresAt || "");
+        if (expiresAt) {
+          const parsedDate = new Date(expiresAt);
+          const timezone = state.displayTimezone || "Asia/Taipei";
+          const displayText = Number.isNaN(parsedDate.getTime())
+            ? expiresAt
+            : parsedDate.toLocaleString("sv-SE", {
+                timeZone: timezone,
+                hour12: false
+              });
+          showToast(`Threads Token 已更新（約到期時間：${displayText}，${timezone}）`, 6000);
+        } else {
+          showToast("Threads Token 已更新。", 4500);
+        }
+      } catch (error) {
+        showToast(`更新 Threads Token 失敗：${error.message}`, 6000);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+
   if (el.generateDraftBtn) {
     el.generateDraftBtn.addEventListener("click", async () => {
+      if (!proceedWithUnsavedSettings("產生草稿")) {
+        return;
+      }
       setLoading(true, "正在等待 LLM 產生草稿，請稍候...");
       try {
         const resp = await api("/api/run-now", { method: "POST", body: "{}" });
@@ -91,6 +190,9 @@ export function attachEventListeners() {
 
   if (el.generateDraftImageBtn) {
     el.generateDraftImageBtn.addEventListener("click", async () => {
+      if (!proceedWithUnsavedSettings("生成新聞圖片")) {
+        return;
+      }
       await flushDraftSave();
       setLoading(true, "正在生成新聞圖片，請稍候...");
       try {
@@ -109,6 +211,9 @@ export function attachEventListeners() {
 
   if (el.runNewsNowBtn) {
     el.runNewsNowBtn.addEventListener("click", async () => {
+      if (!proceedWithUnsavedSettings("立即抓取新聞")) {
+        return;
+      }
       setLoading(true, "正在抓取近兩天新聞並整理摘要...");
       try {
         const resp = await api("/api/news/run-now", { method: "POST", body: "{}" });
@@ -132,6 +237,9 @@ export function attachEventListeners() {
       if (invalidReason) {
         showToast(`草稿格式不正確：${invalidReason}`, 5000);
         setDraftEditStatus(`草稿尚未儲存：${invalidReason}`, true);
+        return;
+      }
+      if (!proceedWithUnsavedSettings("發佈草稿")) {
         return;
       }
 
@@ -158,11 +266,14 @@ export function attachEventListeners() {
 
   if (el.manualReplyBtn) {
     el.manualReplyBtn.addEventListener("click", async () => {
-      if (state.manualReplyLoading) {
+      if (state.manualReplyLoading || state.isLoading) {
         return;
       }
+      if (!proceedWithUnsavedSettings("回覆留言")) {
+        return;
+      }
+      setLoading(true, "正在掃描留言並自動回覆...");
       setManualReplyLoading(true);
-      showToast("正在掃描留言並自動回覆，你可繼續操作其他功能。", 4000);
       try {
         const resp = await api("/api/replies/scan-now", { method: "POST", body: "{}" });
         const result = resp.result || {};
@@ -173,6 +284,7 @@ export function attachEventListeners() {
         showToast(`回覆留言失敗：${error.message}`, 5000);
       } finally {
         setManualReplyLoading(false);
+        setLoading(false);
       }
     });
   }
