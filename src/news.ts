@@ -1,4 +1,6 @@
-import { generatePostDraftFromContext } from "./gemini";
+import { generateNewsArticlesByLlm, generatePostDraftFromContext } from "./gemini";
+import { generateDraftImageAsset } from "./images";
+import { hasStageApiKey, resolveStageLlmSettings } from "./llm-stage-settings";
 import { saveNewsSnapshot } from "./news-snapshots";
 import { resolveRunDate } from "./posting";
 import { getPendingDraft, insertRun, listRecentSuccessfulDrafts, upsertPendingDraft } from "./runs";
@@ -15,8 +17,8 @@ import { DEFAULT_NEWS_PROVIDER, getLocalDateTime, safeErrorMessage, sanitizeNews
 const NEWS_LOOKBACK_DAYS = 2;
 const MAX_QUERY_ATTEMPTS = 8;
 type NewsRunType = "scheduled_news_prefill" | "manual_news_prefill";
-type RequestedNewsProvider = "google_rss" | "gnews" | "auto";
-type ConcreteNewsProvider = "google_rss" | "gnews";
+type RequestedNewsProvider = "google_rss" | "gnews" | "auto" | "llm";
+type ConcreteNewsProvider = "google_rss" | "gnews" | "llm";
 
 interface NewsArticle {
   title?: string;
@@ -92,6 +94,9 @@ function providerLabel(provider: string) {
   }
   if (value === "auto") {
     return "自動（RSS 優先）";
+  }
+  if (value === "llm") {
+    return "LLM 抓新聞";
   }
   return "新聞來源";
 }
@@ -750,8 +755,81 @@ async function fetchGoogleRssArticles(
   };
 }
 
+async function fetchLlmNewsArticles(
+  settings: StoredSettings,
+  now: Date,
+  requestedProvider: RequestedNewsProvider
+): Promise<NewsFetchResult> {
+  void now;
+  if (!settings.newsKeywords.length) {
+    return {
+      articles: [],
+      attempts: [],
+      rateLimited: false,
+      providerUsed: "llm",
+      requestedProvider
+    };
+  }
+
+  const attempts: NewsQueryAttemptResult[] = [];
+  const newsLlmSettings = resolveStageLlmSettings(settings, "news");
+  try {
+    const llmArticles = await generateNewsArticlesByLlm(
+      newsLlmSettings,
+      settings.newsKeywords,
+      NEWS_LOOKBACK_DAYS,
+      settings.newsMaxItems
+    );
+    const normalized = normalizeArticles(
+      llmArticles.map((item) => ({
+        title: item.title,
+        description: item.summary,
+        content: item.summary,
+        url: item.url,
+        publishedAt: item.publishedAt,
+        source: { name: item.source }
+      })),
+      settings.newsMaxItems
+    );
+    attempts.push({
+      label: "LLM 抓新聞",
+      query: settings.newsKeywords.join(" OR "),
+      lang: null,
+      country: null,
+      matched: normalized.length,
+      status: "success"
+    });
+    return {
+      articles: normalized,
+      attempts,
+      rateLimited: false,
+      providerUsed: "llm",
+      requestedProvider
+    };
+  } catch (error) {
+    const message = safeErrorMessage(error);
+    attempts.push({
+      label: "LLM 抓新聞",
+      query: settings.newsKeywords.join(" OR "),
+      lang: null,
+      country: null,
+      matched: 0,
+      status: "error",
+      error: message
+    });
+    throw withAttemptContext(new Error(message), attempts, {
+      providerUsed: "llm",
+      rateLimited: false
+    });
+  }
+}
+
 async function fetchNewsArticles(env: Env, settings: StoredSettings, now: Date): Promise<NewsFetchResult> {
   const requestedProvider = resolveRequestedProvider(settings);
+
+  if (requestedProvider === "llm") {
+    return fetchLlmNewsArticles(settings, now, requestedProvider);
+  }
 
   if (requestedProvider === "gnews") {
     return fetchGNewsArticles(env, settings, now, requestedProvider);
@@ -866,8 +944,21 @@ async function executeNewsPrefill(
     };
   }
 
-  if (shouldGenerateDraft && !settings.geminiApiKey) {
-    const message = "缺少 LLM API Key，無法根據新聞生成草稿";
+  if (selectedProvider === "llm" && !hasStageApiKey(settings, "news")) {
+    const message = "新聞來源選擇 LLM 抓新聞時，需要先填入「抓新聞 LLM」API Key";
+    const runId = await insertRun(env, userId, runType, runDate, "failed", message);
+    return {
+      runId,
+      status: "failed",
+      message,
+      runType,
+      runDate,
+      newsPreview: buildNewsPreview(settings, [], [], selectedProvider)
+    };
+  }
+
+  if (shouldGenerateDraft && !hasStageApiKey(settings, "draft")) {
+    const message = "缺少文字草稿 LLM API Key，無法根據新聞生成草稿";
     const runId = await insertRun(env, userId, runType, runDate, "failed", message);
     return {
       runId,
@@ -942,7 +1033,7 @@ async function executeNewsPrefill(
         `來源：${providerLabel(fetchResult.providerUsed)}`,
         `關鍵字：${settings.newsKeywords.join("、")}`,
         firstTitle ? `最新：${firstTitle}` : "",
-        "已儲存新聞摘要，請到草稿區按「產生草稿」或「重新產生草稿」"
+        "已儲存新聞摘要，請到草稿區依序按「產生草稿」與「生成新聞圖片」"
       ]
         .filter(Boolean)
         .join("，");
@@ -951,20 +1042,41 @@ async function executeNewsPrefill(
     }
 
     const recentDrafts = await listRecentSuccessfulDrafts(env, userId, 12);
+    const draftLlmSettings = resolveStageLlmSettings(settings, "draft");
     const draft = await generatePostDraftFromContext(
-      settings,
+      draftLlmSettings,
       localNow.dateKey,
       context,
       recentDrafts
     );
-    await upsertPendingDraft(env, userId, draft, settings);
+    let imageUrl = "";
+    let imagePrompt = "";
+    let imageError = "";
+    if (settings.imageEnabled) {
+      try {
+        const imageLlmSettings = resolveStageLlmSettings(settings, "image");
+        if (!imageLlmSettings.geminiApiKey) {
+          throw new Error("缺少圖片 LLM API Key");
+        }
+        const image = await generateDraftImageAsset(imageLlmSettings, draft, localNow.dateKey);
+        imageUrl = image.imageUrl;
+        imagePrompt = image.imagePrompt;
+      } catch (error) {
+        imageError = safeErrorMessage(error);
+      }
+    }
+
+    await upsertPendingDraft(env, userId, draft, draftLlmSettings, {
+      imageUrl,
+      imagePrompt
+    });
 
     const message = [
       `已抓取近 ${NEWS_LOOKBACK_DAYS} 天新聞 ${fetchResult.articles.length} 則`,
       `來源：${providerLabel(fetchResult.providerUsed)}`,
       `關鍵字：${settings.newsKeywords.join("、")}`,
       firstTitle ? `最新：${firstTitle}` : "",
-      "已產生新聞草稿"
+      imageUrl ? "已產生新聞草稿與配圖" : imageError ? `已產生新聞草稿（配圖失敗：${imageError}）` : "已產生新聞草稿"
     ]
       .filter(Boolean)
       .join("，");

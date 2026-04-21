@@ -82,30 +82,85 @@
 
           <div class="settingsSectionTitle fieldWide">
             <h3>模型與內容</h3>
-            <p class="hint">決定用哪家模型、語氣，以及給 LLM 的指令。</p>
+            <p class="hint">三個階段可分別使用不同公司與 API Key，降低單次指令 token 壓力。</p>
+          </div>
+
+          <div class="settingsSectionTitle fieldWide">
+            <h3>1) 抓新聞 LLM（僅新聞來源選 LLM 時使用）</h3>
+            <p class="hint">若新聞來源為 Google RSS / GNews，此組可不填。</p>
           </div>
 
           <label class="field">
-            <span>LLM 公司</span>
-            <select id="llmProvider">
+            <span>抓新聞 LLM 公司</span>
+            <select id="newsLlmProvider">
               <option value="gemini">Gemini</option>
               <option value="chatgpt">ChatGPT</option>
               <option value="anthropic">Anthropic</option>
+              <option value="felo">Felo</option>
             </select>
           </label>
 
           <label class="field">
-            <span>LLM 模型</span>
-            <select id="llmModel">
-              <option value="gemini-2.5-flash">gemini-2.5-flash（較便宜）</option>
-              <option value="gemini-2.5-pro">gemini-2.5-pro（較強）</option>
-            </select>
+            <span>抓新聞 LLM 模型</span>
+            <select id="newsLlmModel"></select>
           </label>
 
           <label class="field fieldWide">
-            <span id="llmApiKeyLabel">Gemini API Key</span>
-            <input id="geminiApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
-            <p id="llmApiKeyHint" class="hint">請填入所選模型公司的 API Key。</p>
+            <span id="newsLlmApiKeyLabel">Gemini API Key</span>
+            <input id="newsLlmApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
+            <p id="newsLlmApiKeyHint" class="hint">請填入抓新聞階段使用的 API Key。</p>
+          </label>
+
+          <div class="settingsSectionTitle fieldWide">
+            <h3>2) 文字草稿 LLM（草稿 + 留言回覆）</h3>
+            <p class="hint">會用在「產生草稿」與自動留言回覆。</p>
+          </div>
+
+          <label class="field">
+            <span>文字草稿 LLM 公司</span>
+            <select id="draftLlmProvider">
+              <option value="gemini">Gemini</option>
+              <option value="chatgpt">ChatGPT</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="felo">Felo</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>文字草稿 LLM 模型</span>
+            <select id="draftLlmModel"></select>
+          </label>
+
+          <label class="field fieldWide">
+            <span id="draftLlmApiKeyLabel">Gemini API Key</span>
+            <input id="draftLlmApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
+            <p id="draftLlmApiKeyHint" class="hint">請填入文字草稿階段使用的 API Key。</p>
+          </label>
+
+          <div class="settingsSectionTitle fieldWide">
+            <h3>3) 新聞圖片 LLM（只做圖片提示詞）</h3>
+            <p class="hint">會用在「生成新聞圖片」按鈕與排程自動配圖。</p>
+          </div>
+
+          <label class="field">
+            <span>新聞圖片 LLM 公司</span>
+            <select id="imageLlmProvider">
+              <option value="gemini">Gemini</option>
+              <option value="chatgpt">ChatGPT</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="felo">Felo</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>新聞圖片 LLM 模型</span>
+            <select id="imageLlmModel"></select>
+          </label>
+
+          <label class="field fieldWide">
+            <span id="imageLlmApiKeyLabel">Gemini API Key</span>
+            <input id="imageLlmApiKey" type="text" placeholder="貼上你的 Gemini API Key" />
+            <p id="imageLlmApiKeyHint" class="hint">請填入新聞圖片階段使用的 API Key。</p>
           </label>
 
           <label class="field fieldWide">
@@ -139,6 +194,11 @@
               placeholder="例如：專業但友善、句子短、避免過度行銷語氣。"
             ></textarea>
             <p class="hint">最多 1000 字</p>
+          </label>
+
+          <label class="field switchField fieldWide">
+            <input id="imageEnabled" type="checkbox" />
+            <span>啟用草稿配圖（用 LLM 產生圖片提示並自動生成）</span>
           </label>
 
           <div class="settingsSectionTitle fieldWide">
@@ -183,6 +243,7 @@
               <option value="google_rss">Google News RSS（推薦）</option>
               <option value="auto">自動（先 RSS，失敗再 GNews）</option>
               <option value="gnews">GNews API</option>
+              <option value="llm">LLM 抓新聞</option>
             </select>
           </label>
 
@@ -233,10 +294,18 @@
         <p id="draftEditStatus" class="hint">尚未有可編輯草稿。</p>
         <div class="actions">
           <button id="generateDraftBtn" type="button" class="btn ctaSoft">產生草稿</button>
+          <button id="generateDraftImageBtn" type="button" class="btn ghost">生成新聞圖片</button>
           <button id="publishDraftBtn" type="button" class="btn ctaStrong">發佈草稿</button>
           <button id="manualReplyBtn" type="button" class="btn">回覆留言</button>
-          <button id="regenerateDraftBtn" type="button" class="btn ghost">重新產生草稿</button>
         </div>
+        <section id="draftImageCard" class="draftImageCard hidden">
+          <div class="draftImageHead">
+            <h3>本篇配圖</h3>
+            <span class="hint">會在發佈草稿時一併送出</span>
+          </div>
+          <img id="draftImagePreview" class="draftImagePreview" alt="AI 生成配圖預覽" />
+          <p id="draftImagePrompt" class="hint"></p>
+        </section>
         <section id="newsFetchResultCard" class="newsResult hidden">
           <div class="newsResultHead">
             <h3>新聞抓取結果（本次）</h3>

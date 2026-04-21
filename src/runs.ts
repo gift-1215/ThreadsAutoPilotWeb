@@ -2,6 +2,16 @@ import { Env, PendingDraftRow, RunRow, StoredSettings } from "./types";
 import { randomId, sanitizeLlmModel } from "./utils";
 
 const MAX_RUN_HISTORY = 30;
+const MISSING_PENDING_IMAGE_URL_COLUMN = "no such column: image_url";
+const MISSING_PENDING_IMAGE_PROMPT_COLUMN = "no such column: image_prompt";
+
+function isMissingPendingImageColumn(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || "").toLowerCase();
+  return (
+    message.includes(MISSING_PENDING_IMAGE_URL_COLUMN) ||
+    message.includes(MISSING_PENDING_IMAGE_PROMPT_COLUMN)
+  );
+}
 
 async function enforceRunRetention(env: Env, userId: number) {
   await env.DB.prepare(
@@ -61,45 +71,106 @@ export async function deleteRuns(env: Env, userId: number) {
 }
 
 export async function getPendingDraft(env: Env, userId: number) {
-  return env.DB.prepare(
-    `SELECT user_id, draft, llm_model, enable_grounding, created_at, updated_at
-     FROM pending_drafts
-     WHERE user_id = ?
-     LIMIT 1`
-  )
-    .bind(userId)
-    .first<PendingDraftRow>();
+  try {
+    return await env.DB.prepare(
+      `SELECT user_id, draft, llm_model, enable_grounding, image_url, image_prompt, created_at, updated_at
+       FROM pending_drafts
+       WHERE user_id = ?
+       LIMIT 1`
+    )
+      .bind(userId)
+      .first<PendingDraftRow>();
+  } catch (error) {
+    if (!isMissingPendingImageColumn(error)) {
+      throw error;
+    }
+    const legacy = await env.DB.prepare(
+      `SELECT user_id, draft, llm_model, enable_grounding, created_at, updated_at
+       FROM pending_drafts
+       WHERE user_id = ?
+       LIMIT 1`
+    )
+      .bind(userId)
+      .first<Omit<PendingDraftRow, "image_url" | "image_prompt">>();
+    if (!legacy) {
+      return null;
+    }
+    return {
+      ...legacy,
+      image_url: null,
+      image_prompt: null
+    };
+  }
 }
 
 export async function upsertPendingDraft(
   env: Env,
   userId: number,
   draft: string,
-  settings: StoredSettings
+  settings: StoredSettings,
+  options: { imageUrl?: string | null; imagePrompt?: string | null } = {}
 ) {
-  await env.DB.prepare(
-    `INSERT INTO pending_drafts (
-      user_id,
-      draft,
-      llm_model,
-      enable_grounding,
-      created_at,
-      updated_at
+  const safeImageUrl = String(options.imageUrl || "").trim();
+  const safeImagePrompt = String(options.imagePrompt || "").trim();
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO pending_drafts (
+        user_id,
+        draft,
+        llm_model,
+        enable_grounding,
+        image_url,
+        image_prompt,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        draft = excluded.draft,
+        llm_model = excluded.llm_model,
+        enable_grounding = excluded.enable_grounding,
+        image_url = excluded.image_url,
+        image_prompt = excluded.image_prompt,
+        updated_at = CURRENT_TIMESTAMP`
     )
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    ON CONFLICT(user_id) DO UPDATE SET
-      draft = excluded.draft,
-      llm_model = excluded.llm_model,
-      enable_grounding = excluded.enable_grounding,
-      updated_at = CURRENT_TIMESTAMP`
-  )
-    .bind(
-      userId,
-      draft,
-      sanitizeLlmModel(settings.llmModel, settings.llmProvider),
-      settings.enableGrounding ? 1 : 0
+      .bind(
+        userId,
+        draft,
+        sanitizeLlmModel(settings.llmModel, settings.llmProvider),
+        settings.enableGrounding ? 1 : 0,
+        safeImageUrl || null,
+        safeImagePrompt || null
+      )
+      .run();
+  } catch (error) {
+    if (!isMissingPendingImageColumn(error)) {
+      throw error;
+    }
+    await env.DB.prepare(
+      `INSERT INTO pending_drafts (
+        user_id,
+        draft,
+        llm_model,
+        enable_grounding,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        draft = excluded.draft,
+        llm_model = excluded.llm_model,
+        enable_grounding = excluded.enable_grounding,
+        updated_at = CURRENT_TIMESTAMP`
     )
-    .run();
+      .bind(
+        userId,
+        draft,
+        sanitizeLlmModel(settings.llmModel, settings.llmProvider),
+        settings.enableGrounding ? 1 : 0
+      )
+      .run();
+  }
 }
 
 export async function deletePendingDraft(env: Env, userId: number) {

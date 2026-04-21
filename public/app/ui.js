@@ -38,6 +38,15 @@ const LLM_PROVIDER_CONFIG = {
       { value: "claude-3-5-haiku-latest", label: "claude-3-5-haiku-latest（較便宜）" },
       { value: "claude-3-7-sonnet-latest", label: "claude-3-7-sonnet-latest（較強）" }
     ]
+  },
+  felo: {
+    apiKeyLabel: "Felo API Key",
+    apiKeyPlaceholder: "貼上你的 Felo API Key",
+    apiKeyHint: "請填入 Felo Open Platform API Key（openapi.felo.ai）。",
+    models: [
+      { value: "felo-search", label: "felo-search（搜尋優先）" },
+      { value: "felo-pro", label: "felo-pro（較強）" }
+    ]
   }
 };
 const COMMON_TIMEZONES = [
@@ -117,6 +126,9 @@ function newsProviderLabel(provider) {
   }
   if (key === "auto") {
     return "Auto";
+  }
+  if (key === "llm") {
+    return "LLM 抓新聞";
   }
   return "未知來源";
 }
@@ -251,7 +263,36 @@ export function setSettingsSaveState(mode = "clean") {
   el.settingsSaveReminderText.textContent = SETTINGS_SAVE_MESSAGES[saveState];
 }
 
-export function syncLlmProviderUi(provider, preferredModel = "") {
+function getStageLlmElements(stage) {
+  if (stage === "news") {
+    return {
+      provider: el.newsLlmProvider,
+      model: el.newsLlmModel,
+      apiKeyInput: el.newsLlmApiKey,
+      apiKeyLabel: el.newsLlmApiKeyLabel,
+      apiKeyHint: el.newsLlmApiKeyHint
+    };
+  }
+  if (stage === "image") {
+    return {
+      provider: el.imageLlmProvider,
+      model: el.imageLlmModel,
+      apiKeyInput: el.imageLlmApiKey,
+      apiKeyLabel: el.imageLlmApiKeyLabel,
+      apiKeyHint: el.imageLlmApiKeyHint
+    };
+  }
+  return {
+    provider: el.draftLlmProvider,
+    model: el.draftLlmModel,
+    apiKeyInput: el.draftLlmApiKey,
+    apiKeyLabel: el.draftLlmApiKeyLabel,
+    apiKeyHint: el.draftLlmApiKeyHint
+  };
+}
+
+export function syncStageLlmProviderUi(stage, provider, preferredModel = "") {
+  const stageEls = getStageLlmElements(stage);
   const safeProvider = normalizeLlmProvider(provider);
   const config = LLM_PROVIDER_CONFIG[safeProvider];
   const modelOptions = config.models;
@@ -259,32 +300,36 @@ export function syncLlmProviderUi(provider, preferredModel = "") {
     ? preferredModel
     : modelOptions[0].value;
 
-  if (el.llmProvider) {
-    el.llmProvider.value = safeProvider;
+  if (stageEls.provider) {
+    stageEls.provider.value = safeProvider;
   }
 
-  if (el.llmModel) {
-    el.llmModel.innerHTML = "";
+  if (stageEls.model) {
+    stageEls.model.innerHTML = "";
     for (const option of modelOptions) {
       const node = document.createElement("option");
       node.value = option.value;
       node.textContent = option.label;
-      el.llmModel.appendChild(node);
+      stageEls.model.appendChild(node);
     }
-    el.llmModel.value = selectedModel;
+    stageEls.model.value = selectedModel;
   }
 
-  if (el.llmApiKeyLabel) {
-    el.llmApiKeyLabel.textContent = config.apiKeyLabel;
+  if (stageEls.apiKeyLabel) {
+    stageEls.apiKeyLabel.textContent = config.apiKeyLabel;
   }
-  if (el.geminiApiKey) {
-    el.geminiApiKey.placeholder = config.apiKeyPlaceholder;
+  if (stageEls.apiKeyInput) {
+    stageEls.apiKeyInput.placeholder = config.apiKeyPlaceholder;
   }
-  if (el.llmApiKeyHint) {
-    el.llmApiKeyHint.textContent = config.apiKeyHint;
+  if (stageEls.apiKeyHint) {
+    stageEls.apiKeyHint.textContent = config.apiKeyHint;
   }
 
   return { provider: safeProvider, model: selectedModel };
+}
+
+export function syncLlmProviderUi(provider, preferredModel = "") {
+  return syncStageLlmProviderUi("draft", provider, preferredModel);
 }
 
 export function setManualReplyLoading(isLoading) {
@@ -313,6 +358,9 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
   }
   if (el.generateDraftBtn) {
     el.generateDraftBtn.disabled = isLoading;
+  }
+  if (el.generateDraftImageBtn) {
+    el.generateDraftImageBtn.disabled = isLoading || !state.hasPendingDraft;
   }
   if (el.runNewsNowBtn) {
     el.runNewsNowBtn.disabled = isLoading;
@@ -343,9 +391,6 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
   }
   if (el.manualReplyBtn) {
     el.manualReplyBtn.disabled = isLoading || state.manualReplyLoading;
-  }
-  if (el.regenerateDraftBtn) {
-    el.regenerateDraftBtn.disabled = isLoading || !state.hasPendingDraft;
   }
   if (el.draftPreview) {
     el.draftPreview.disabled = isLoading;
@@ -488,6 +533,9 @@ export function resetRunFilters() {
 export function renderPendingDraft(pendingDraft) {
   const draftText = pendingDraft?.draft || "";
   const hasDraft = Boolean(draftText);
+  const imageUrl = safeExternalUrl(pendingDraft?.image_url || pendingDraft?.imageUrl || "");
+  const imagePrompt = String(pendingDraft?.image_prompt || pendingDraft?.imagePrompt || "").trim();
+  const hasImage = Boolean(imageUrl);
 
   state.hasPendingDraft = hasDraft;
   state.lastSavedDraft = hasDraft ? draftText : "";
@@ -504,12 +552,38 @@ export function renderPendingDraft(pendingDraft) {
     el.nextDraftPreview.textContent = draftText || "目前沒有待發草稿。";
   }
 
+  if (el.draftImageCard && el.draftImagePreview && el.draftImagePrompt) {
+    if (hasDraft && hasImage) {
+      el.draftImageCard.classList.remove("hidden");
+      el.draftImagePreview.src = imageUrl;
+      el.draftImagePrompt.textContent = imagePrompt
+        ? "圖片提示詞：" + imagePrompt
+        : "已生成配圖，可直接隨草稿發佈。";
+    } else {
+      el.draftImageCard.classList.add("hidden");
+      el.draftImagePreview.removeAttribute("src");
+      el.draftImagePrompt.textContent = "";
+    }
+  }
+
+  if (el.generateDraftBtn) {
+    el.generateDraftBtn.textContent = "產生草稿";
+  }
+
   if (hasDraft) {
     const model = pendingDraft.llm_model || "gemini-2.5-flash";
     const grounding = Number(pendingDraft.enable_grounding) === 1 ? "開啟" : "關閉";
+    const imageTag = hasImage ? "已生成" : "未生成";
     const updatedAt = formatInTimezone(pendingDraft.updated_at || pendingDraft.created_at || "-");
     const message =
-      "模型：" + model + "｜Grounding：" + grounding + "｜最後更新：" + updatedAt;
+      "模型：" +
+      model +
+      "｜Grounding：" +
+      grounding +
+      "｜配圖：" +
+      imageTag +
+      "｜最後更新：" +
+      updatedAt;
 
     if (el.nextDraftMeta) {
       el.nextDraftMeta.textContent = message;
@@ -518,8 +592,8 @@ export function renderPendingDraft(pendingDraft) {
     if (el.publishDraftBtn) {
       el.publishDraftBtn.disabled = state.isLoading;
     }
-    if (el.regenerateDraftBtn) {
-      el.regenerateDraftBtn.disabled = state.isLoading;
+    if (el.generateDraftImageBtn) {
+      el.generateDraftImageBtn.disabled = state.isLoading;
     }
 
     setDraftEditStatus("可直接鍵盤編輯，系統會自動儲存。", false);
@@ -533,8 +607,8 @@ export function renderPendingDraft(pendingDraft) {
   if (el.publishDraftBtn) {
     el.publishDraftBtn.disabled = true;
   }
-  if (el.regenerateDraftBtn) {
-    el.regenerateDraftBtn.disabled = true;
+  if (el.generateDraftImageBtn) {
+    el.generateDraftImageBtn.disabled = true;
   }
 
   setDraftEditStatus("可直接鍵盤編輯，輸入後會自動儲存為下一篇。", false);
@@ -700,13 +774,40 @@ export function fillSettings(settings) {
     el.threadsToken.value = settings.threadsToken || "";
   }
 
-  const synced = syncLlmProviderUi(settings.llmProvider || DEFAULT_LLM_PROVIDER, settings.llmModel || "");
+  const syncedNews = syncStageLlmProviderUi(
+    "news",
+    settings.newsLlmProvider ?? settings.llmProvider ?? DEFAULT_LLM_PROVIDER,
+    settings.newsLlmModel || ""
+  );
+  const syncedDraft = syncStageLlmProviderUi(
+    "draft",
+    settings.draftLlmProvider ?? settings.llmProvider ?? DEFAULT_LLM_PROVIDER,
+    settings.draftLlmModel || settings.llmModel || ""
+  );
+  const syncedImage = syncStageLlmProviderUi(
+    "image",
+    settings.imageLlmProvider ?? settings.llmProvider ?? DEFAULT_LLM_PROVIDER,
+    settings.imageLlmModel || ""
+  );
 
-  if (el.geminiApiKey) {
-    el.geminiApiKey.value = settings.geminiApiKey || settings.llmApiKey || "";
+  if (el.newsLlmApiKey) {
+    el.newsLlmApiKey.value = settings.newsLlmApiKey ?? settings.geminiApiKey ?? "";
   }
-  if (el.llmModel && !el.llmModel.value) {
-    el.llmModel.value = synced.model;
+  if (el.draftLlmApiKey) {
+    el.draftLlmApiKey.value = settings.draftLlmApiKey ?? settings.geminiApiKey ?? "";
+  }
+  if (el.imageLlmApiKey) {
+    el.imageLlmApiKey.value = settings.imageLlmApiKey ?? settings.geminiApiKey ?? "";
+  }
+
+  if (el.newsLlmModel && !el.newsLlmModel.value) {
+    el.newsLlmModel.value = syncedNews.model;
+  }
+  if (el.draftLlmModel && !el.draftLlmModel.value) {
+    el.draftLlmModel.value = syncedDraft.model;
+  }
+  if (el.imageLlmModel && !el.imageLlmModel.value) {
+    el.imageLlmModel.value = syncedImage.model;
   }
   if (el.enableGrounding) {
     el.enableGrounding.checked = Boolean(settings.enableGrounding);
@@ -742,9 +843,12 @@ export function fillSettings(settings) {
     el.newsEnabled.checked = Boolean(settings.newsEnabled);
   }
   if (el.newsProvider) {
-    const allowed = new Set(["google_rss", "auto", "gnews"]);
+    const allowed = new Set(["google_rss", "auto", "gnews", "llm"]);
     const value = String(settings.newsProvider || DEFAULT_NEWS_PROVIDER);
     el.newsProvider.value = allowed.has(value) ? value : DEFAULT_NEWS_PROVIDER;
+  }
+  if (el.imageEnabled) {
+    el.imageEnabled.checked = Boolean(settings.imageEnabled);
   }
   if (el.timezone) {
     const timezone = settings.timezone || DEFAULT_TIMEZONE;
@@ -761,17 +865,39 @@ export function fillSettings(settings) {
 export function collectSettings() {
   const postInstruction = (el.postInstruction?.value || "").trim().slice(0, SETTINGS_TEXT_LIMIT);
   const postStyle = (el.postStyle?.value || "").trim().slice(0, SETTINGS_TEXT_LIMIT);
-  const llmProvider = normalizeLlmProvider(el.llmProvider?.value || DEFAULT_LLM_PROVIDER);
-  const modelOptions = (LLM_PROVIDER_CONFIG[llmProvider] || LLM_PROVIDER_CONFIG[DEFAULT_LLM_PROVIDER]).models;
-  const selectedModel = modelOptions.some((option) => option.value === el.llmModel?.value)
-    ? String(el.llmModel?.value || "")
-    : getDefaultLlmModel(llmProvider);
+
+  const newsProvider = normalizeLlmProvider(el.newsLlmProvider?.value || DEFAULT_LLM_PROVIDER);
+  const newsOptions = (LLM_PROVIDER_CONFIG[newsProvider] || LLM_PROVIDER_CONFIG[DEFAULT_LLM_PROVIDER]).models;
+  const newsModel = newsOptions.some((option) => option.value === el.newsLlmModel?.value)
+    ? String(el.newsLlmModel?.value || "")
+    : getDefaultLlmModel(newsProvider);
+
+  const draftProvider = normalizeLlmProvider(el.draftLlmProvider?.value || DEFAULT_LLM_PROVIDER);
+  const draftOptions = (LLM_PROVIDER_CONFIG[draftProvider] || LLM_PROVIDER_CONFIG[DEFAULT_LLM_PROVIDER]).models;
+  const draftModel = draftOptions.some((option) => option.value === el.draftLlmModel?.value)
+    ? String(el.draftLlmModel?.value || "")
+    : getDefaultLlmModel(draftProvider);
+
+  const imageProvider = normalizeLlmProvider(el.imageLlmProvider?.value || DEFAULT_LLM_PROVIDER);
+  const imageOptions = (LLM_PROVIDER_CONFIG[imageProvider] || LLM_PROVIDER_CONFIG[DEFAULT_LLM_PROVIDER]).models;
+  const imageModel = imageOptions.some((option) => option.value === el.imageLlmModel?.value)
+    ? String(el.imageLlmModel?.value || "")
+    : getDefaultLlmModel(imageProvider);
 
   return {
     threadsToken: el.threadsToken?.value.trim() || "",
-    geminiApiKey: el.geminiApiKey?.value.trim() || "",
-    llmProvider,
-    llmModel: selectedModel,
+    geminiApiKey: el.draftLlmApiKey?.value.trim() || "",
+    llmProvider: draftProvider,
+    llmModel: draftModel,
+    newsLlmProvider: newsProvider,
+    newsLlmModel: newsModel,
+    newsLlmApiKey: el.newsLlmApiKey?.value.trim() || "",
+    draftLlmProvider: draftProvider,
+    draftLlmModel: draftModel,
+    draftLlmApiKey: el.draftLlmApiKey?.value.trim() || "",
+    imageLlmProvider: imageProvider,
+    imageLlmModel: imageModel,
+    imageLlmApiKey: el.imageLlmApiKey?.value.trim() || "",
     enableGrounding: Boolean(el.enableGrounding?.checked),
     postInstruction,
     postStyle,
@@ -782,6 +908,7 @@ export function collectSettings() {
     newsFetchTime: el.newsFetchTime?.value || "08:00",
     newsMaxItems: Number(el.newsMaxItems?.value || "5"),
     newsProvider: el.newsProvider?.value || DEFAULT_NEWS_PROVIDER,
+    imageEnabled: Boolean(el.imageEnabled?.checked),
     timezone: (el.timezone?.value || "").trim() || DEFAULT_TIMEZONE,
     enabled: Boolean(el.enabled?.checked)
   };

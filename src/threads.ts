@@ -201,17 +201,19 @@ export async function publishReplyToThread(
   };
 }
 
-export async function publishToThreads(accessToken: string, draft: string) {
+export async function publishToThreads(accessToken: string, draft: string, imageUrl = "") {
   if (!accessToken) {
     throw new Error("缺少 Threads token");
   }
 
   const me = await fetchThreadsMe(accessToken);
+  const safeImageUrl = String(imageUrl || "").trim();
   const createUrl = `https://graph.threads.net/v1.0/${me.id}/threads`;
   const created = await threadsPostForm(createUrl, {
     access_token: accessToken,
-    media_type: "TEXT",
-    text: draft
+    media_type: safeImageUrl ? "IMAGE" : "TEXT",
+    text: draft,
+    image_url: safeImageUrl
   });
 
   const creationId = String(created.id || "");

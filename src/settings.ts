@@ -22,6 +22,18 @@ const DEFAULT_NEWS_FETCH_TIME = "08:00";
 const DEFAULT_NEWS_MAX_ITEMS = 5;
 const MISSING_PROVIDER_COLUMN = "no such column: llm_provider";
 const MISSING_NEWS_PROVIDER_COLUMN = "no such column: news_provider";
+const MISSING_IMAGE_ENABLED_COLUMN = "no such column: image_enabled";
+const STAGE_LLM_COLUMNS = [
+  "news_llm_provider",
+  "news_llm_model",
+  "news_llm_api_key",
+  "draft_llm_provider",
+  "draft_llm_model",
+  "draft_llm_api_key",
+  "image_llm_provider",
+  "image_llm_model",
+  "image_llm_api_key"
+] as const;
 
 function isMissingProviderColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_PROVIDER_COLUMN);
@@ -29,6 +41,15 @@ function isMissingProviderColumnError(error: unknown) {
 
 function isMissingNewsProviderColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_NEWS_PROVIDER_COLUMN);
+}
+
+function isMissingImageEnabledColumnError(error: unknown) {
+  return safeErrorMessage(error).toLowerCase().includes(MISSING_IMAGE_ENABLED_COLUMN);
+}
+
+function isMissingStageLlmColumnError(error: unknown) {
+  const message = safeErrorMessage(error).toLowerCase();
+  return STAGE_LLM_COLUMNS.some((column) => message.includes(`no such column: ${column}`));
 }
 
 function isMissingNewsColumnError(error: unknown) {
@@ -53,7 +74,8 @@ function withDefaultNewsFields(
     news_keywords: "",
     news_fetch_time: DEFAULT_NEWS_FETCH_TIME,
     news_max_items: DEFAULT_NEWS_MAX_ITEMS,
-    news_provider: null
+    news_provider: null,
+    image_enabled: 0
   };
 }
 
@@ -75,16 +97,28 @@ function withDefaultProviderAndNewsFields(
     news_keywords: "",
     news_fetch_time: DEFAULT_NEWS_FETCH_TIME,
     news_max_items: DEFAULT_NEWS_MAX_ITEMS,
-    news_provider: null
+    news_provider: null,
+    image_enabled: 0
   };
 }
 
 export function defaultSettings(env: Env): StoredSettings {
+  const defaultProvider = DEFAULT_LLM_PROVIDER;
+  const defaultModel = DEFAULT_LLM_MODEL;
   return {
     threadsToken: "",
     geminiApiKey: "",
-    llmProvider: DEFAULT_LLM_PROVIDER,
-    llmModel: DEFAULT_LLM_MODEL,
+    llmProvider: defaultProvider,
+    llmModel: defaultModel,
+    newsLlmProvider: defaultProvider,
+    newsLlmModel: defaultModel,
+    newsLlmApiKey: "",
+    draftLlmProvider: defaultProvider,
+    draftLlmModel: defaultModel,
+    draftLlmApiKey: "",
+    imageLlmProvider: defaultProvider,
+    imageLlmModel: defaultModel,
+    imageLlmApiKey: "",
     enableGrounding: false,
     postInstruction: "請產生一篇適合 Threads 的貼文，內容要清楚、有觀點、可讀性高。",
     postStyle: "自然、真誠、繁體中文。",
@@ -95,6 +129,7 @@ export function defaultSettings(env: Env): StoredSettings {
     newsFetchTime: DEFAULT_NEWS_FETCH_TIME,
     newsMaxItems: DEFAULT_NEWS_MAX_ITEMS,
     newsProvider: DEFAULT_NEWS_PROVIDER,
+    imageEnabled: false,
     timezone: defaultTimezone(env),
     enabled: false
   };
@@ -102,12 +137,32 @@ export function defaultSettings(env: Env): StoredSettings {
 
 export function settingsFromRow(env: Env, row: UserSettingsRow): StoredSettings {
   const defaults = defaultSettings(env);
-  const llmProvider = sanitizeLlmProvider(row.llm_provider);
+  const draftLlmProvider = sanitizeLlmProvider(row.draft_llm_provider ?? row.llm_provider);
+  const draftLlmModel = sanitizeLlmModel(row.draft_llm_model ?? row.llm_model, draftLlmProvider);
+  const draftLlmApiKey = sanitizeText(row.draft_llm_api_key ?? row.gemini_api_key ?? "", 4000);
+
+  const newsLlmProvider = sanitizeLlmProvider(row.news_llm_provider ?? draftLlmProvider);
+  const newsLlmModel = sanitizeLlmModel(row.news_llm_model ?? draftLlmModel, newsLlmProvider);
+  const newsLlmApiKey = sanitizeText(row.news_llm_api_key ?? draftLlmApiKey, 4000);
+
+  const imageLlmProvider = sanitizeLlmProvider(row.image_llm_provider ?? draftLlmProvider);
+  const imageLlmModel = sanitizeLlmModel(row.image_llm_model ?? draftLlmModel, imageLlmProvider);
+  const imageLlmApiKey = sanitizeText(row.image_llm_api_key ?? draftLlmApiKey, 4000);
+
   return {
     threadsToken: row.threads_token || "",
-    geminiApiKey: row.gemini_api_key || "",
-    llmProvider,
-    llmModel: sanitizeLlmModel(row.llm_model, llmProvider),
+    geminiApiKey: draftLlmApiKey,
+    llmProvider: draftLlmProvider,
+    llmModel: draftLlmModel,
+    newsLlmProvider,
+    newsLlmModel,
+    newsLlmApiKey,
+    draftLlmProvider,
+    draftLlmModel,
+    draftLlmApiKey,
+    imageLlmProvider,
+    imageLlmModel,
+    imageLlmApiKey,
     enableGrounding: Number(row.enable_grounding) === 1,
     postInstruction: sanitizeText(row.post_instruction || defaults.postInstruction, SETTINGS_TEXT_LIMIT),
     postStyle: sanitizeText(row.post_style || defaults.postStyle, SETTINGS_TEXT_LIMIT),
@@ -118,9 +173,29 @@ export function settingsFromRow(env: Env, row: UserSettingsRow): StoredSettings 
     newsFetchTime: sanitizePostTime(row.news_fetch_time),
     newsMaxItems: sanitizeNewsMaxItems(row.news_max_items),
     newsProvider: sanitizeNewsProvider(row.news_provider),
+    imageEnabled: Number(row.image_enabled || 0) === 1,
     timezone: sanitizeTimezone(row.timezone, defaultTimezone(env)),
     enabled: Number(row.enabled) === 1
   };
+}
+
+async function getImageEnabledFlag(env: Env, userId: number) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT image_enabled
+       FROM user_settings
+       WHERE user_id = ?
+       LIMIT 1`
+    )
+      .bind(userId)
+      .first<{ image_enabled: number | null }>();
+    return Number(row?.image_enabled || 0) === 1;
+  } catch (error) {
+    if (isMissingImageEnabledColumnError(error)) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function getSettingsLatestRow(env: Env, userId: number) {
@@ -132,6 +207,45 @@ async function getSettingsLatestRow(env: Env, userId: number) {
   )
     .bind(userId)
     .first<UserSettingsRow>();
+}
+
+async function enrichStageLlmColumns(env: Env, userId: number, row: UserSettingsRow) {
+  try {
+    const stageRow = await env.DB.prepare(
+      `SELECT
+        news_llm_provider,
+        news_llm_model,
+        news_llm_api_key,
+        draft_llm_provider,
+        draft_llm_model,
+        draft_llm_api_key,
+        image_llm_provider,
+        image_llm_model,
+        image_llm_api_key
+       FROM user_settings
+       WHERE user_id = ?
+       LIMIT 1`
+    )
+      .bind(userId)
+      .first<Pick<
+        UserSettingsRow,
+        | "news_llm_provider"
+        | "news_llm_model"
+        | "news_llm_api_key"
+        | "draft_llm_provider"
+        | "draft_llm_model"
+        | "draft_llm_api_key"
+        | "image_llm_provider"
+        | "image_llm_model"
+        | "image_llm_api_key"
+      >>();
+    return stageRow ? { ...row, ...stageRow } : row;
+  } catch (error) {
+    if (isMissingStageLlmColumnError(error)) {
+      return row;
+    }
+    throw error;
+  }
 }
 
 async function getSettingsRowWithoutNewsProvider(env: Env, userId: number) {
@@ -233,16 +347,43 @@ export async function getSettings(env: Env, userId: number): Promise<StoredSetti
     return defaultSettings(env);
   }
 
-  return settingsFromRow(env, row);
+  row = await enrichStageLlmColumns(env, userId, row);
+
+  const settings = settingsFromRow(env, row);
+  settings.imageEnabled = await getImageEnabledFlag(env, userId);
+  return settings;
 }
 
 export function normalizeIncomingSettings(env: Env, payload: Record<string, unknown>): StoredSettings {
-  const llmProvider = sanitizeLlmProvider(payload.llmProvider);
+  const draftLlmProvider = sanitizeLlmProvider(payload.draftLlmProvider ?? payload.llmProvider);
+  const draftLlmModel = sanitizeLlmModel(payload.draftLlmModel ?? payload.llmModel, draftLlmProvider);
+  const draftLlmApiKey = sanitizeText(
+    payload.draftLlmApiKey ?? payload.geminiApiKey ?? payload.llmApiKey,
+    4000
+  );
+
+  const newsLlmProvider = sanitizeLlmProvider(payload.newsLlmProvider ?? draftLlmProvider);
+  const newsLlmModel = sanitizeLlmModel(payload.newsLlmModel, newsLlmProvider);
+  const newsLlmApiKey = sanitizeText(payload.newsLlmApiKey ?? draftLlmApiKey, 4000);
+
+  const imageLlmProvider = sanitizeLlmProvider(payload.imageLlmProvider ?? draftLlmProvider);
+  const imageLlmModel = sanitizeLlmModel(payload.imageLlmModel, imageLlmProvider);
+  const imageLlmApiKey = sanitizeText(payload.imageLlmApiKey ?? draftLlmApiKey, 4000);
+
   return {
     threadsToken: sanitizeText(payload.threadsToken, 4000),
-    geminiApiKey: sanitizeText(payload.geminiApiKey ?? payload.llmApiKey, 4000),
-    llmProvider,
-    llmModel: sanitizeLlmModel(payload.llmModel, llmProvider),
+    geminiApiKey: draftLlmApiKey,
+    llmProvider: draftLlmProvider,
+    llmModel: draftLlmModel,
+    newsLlmProvider,
+    newsLlmModel,
+    newsLlmApiKey,
+    draftLlmProvider,
+    draftLlmModel,
+    draftLlmApiKey,
+    imageLlmProvider,
+    imageLlmModel,
+    imageLlmApiKey,
     enableGrounding: parseBoolean(payload.enableGrounding),
     postInstruction: sanitizeText(
       payload.postInstruction ?? payload.postPreference,
@@ -256,9 +397,66 @@ export function normalizeIncomingSettings(env: Env, payload: Record<string, unkn
     newsFetchTime: sanitizePostTime(payload.newsFetchTime),
     newsMaxItems: sanitizeNewsMaxItems(payload.newsMaxItems),
     newsProvider: sanitizeNewsProvider(payload.newsProvider),
+    imageEnabled: parseBoolean(payload.imageEnabled),
     timezone: sanitizeTimezone(payload.timezone, defaultTimezone(env)),
     enabled: parseBoolean(payload.enabled)
   };
+}
+
+async function saveImageEnabledFlag(env: Env, userId: number, imageEnabled: boolean) {
+  try {
+    await env.DB.prepare(
+      `UPDATE user_settings
+       SET image_enabled = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`
+    )
+      .bind(imageEnabled ? 1 : 0, userId)
+      .run();
+  } catch (error) {
+    if (isMissingImageEnabledColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function saveStageLlmColumns(env: Env, userId: number, settings: StoredSettings) {
+  try {
+    await env.DB.prepare(
+      `UPDATE user_settings
+       SET
+         news_llm_provider = ?,
+         news_llm_model = ?,
+         news_llm_api_key = ?,
+         draft_llm_provider = ?,
+         draft_llm_model = ?,
+         draft_llm_api_key = ?,
+         image_llm_provider = ?,
+         image_llm_model = ?,
+         image_llm_api_key = ?,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`
+    )
+      .bind(
+        settings.newsLlmProvider,
+        settings.newsLlmModel,
+        settings.newsLlmApiKey,
+        settings.draftLlmProvider,
+        settings.draftLlmModel,
+        settings.draftLlmApiKey,
+        settings.imageLlmProvider,
+        settings.imageLlmModel,
+        settings.imageLlmApiKey,
+        userId
+      )
+      .run();
+  } catch (error) {
+    if (isMissingStageLlmColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 async function saveSettingsWithAllColumns(env: Env, userId: number, settings: StoredSettings) {
@@ -508,22 +706,30 @@ async function saveSettingsLegacyColumns(env: Env, userId: number, settings: Sto
 export async function saveSettings(env: Env, userId: number, settings: StoredSettings) {
   try {
     await saveSettingsWithAllColumns(env, userId, settings);
+    await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+    await saveStageLlmColumns(env, userId, settings);
     return;
   } catch (error) {
     if (isMissingNewsProviderColumnError(error)) {
       try {
         await saveSettingsWithoutNewsProvider(env, userId, settings);
+        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+        await saveStageLlmColumns(env, userId, settings);
         return;
       } catch (errorWithoutNewsProvider) {
         if (isMissingNewsColumnError(errorWithoutNewsProvider)) {
           try {
             await saveSettingsWithoutNewsColumns(env, userId, settings);
+            await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+            await saveStageLlmColumns(env, userId, settings);
             return;
           } catch (errorWithoutNews) {
             if (!isMissingProviderColumnError(errorWithoutNews)) {
               throw errorWithoutNews;
             }
             await saveSettingsLegacyColumns(env, userId, settings);
+            await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+            await saveStageLlmColumns(env, userId, settings);
             return;
           }
         }
@@ -532,6 +738,8 @@ export async function saveSettings(env: Env, userId: number, settings: StoredSet
           throw errorWithoutNewsProvider;
         }
         await saveSettingsLegacyColumns(env, userId, settings);
+        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+        await saveStageLlmColumns(env, userId, settings);
         return;
       }
     }
@@ -539,12 +747,16 @@ export async function saveSettings(env: Env, userId: number, settings: StoredSet
     if (isMissingNewsColumnError(error)) {
       try {
         await saveSettingsWithoutNewsColumns(env, userId, settings);
+        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+        await saveStageLlmColumns(env, userId, settings);
         return;
       } catch (errorWithoutNews) {
         if (!isMissingProviderColumnError(errorWithoutNews)) {
           throw errorWithoutNews;
         }
         await saveSettingsLegacyColumns(env, userId, settings);
+        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+        await saveStageLlmColumns(env, userId, settings);
         return;
       }
     }
@@ -555,4 +767,6 @@ export async function saveSettings(env: Env, userId: number, settings: StoredSet
   }
 
   await saveSettingsLegacyColumns(env, userId, settings);
+  await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+  await saveStageLlmColumns(env, userId, settings);
 }

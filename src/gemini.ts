@@ -13,7 +13,8 @@ import type { LlmProvider } from "./utils";
 const PROVIDER_LABEL: Record<LlmProvider, string> = {
   gemini: "Gemini",
   chatgpt: "ChatGPT",
-  anthropic: "Anthropic"
+  anthropic: "Anthropic",
+  felo: "Felo"
 };
 const MAX_HISTORY_DRAFTS = 8;
 const MAX_HISTORY_QUOTES = 10;
@@ -352,6 +353,170 @@ function readAnthropicText(payload: unknown) {
   return chunks.join("\n").trim();
 }
 
+function readFeloText(payload: unknown) {
+  const body = asObject(payload);
+  const data = asObject(body.data);
+  const candidates = [data.answer, data.output, data.content, body.answer];
+  for (const item of candidates) {
+    const text = String(item || "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function sourceNameFromUrl(url: string) {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./i, "").trim();
+    return hostname || "Felo";
+  } catch {
+    return "Felo";
+  }
+}
+
+function readFeloResources(payload: unknown) {
+  const body = asObject(payload);
+  const data = asObject(body.data);
+  const resources = Array.isArray(data.resources)
+    ? (data.resources as Array<Record<string, unknown>>)
+    : [];
+
+  return resources.map((resource) => {
+    const url = String(resource.link || resource.url || "").trim();
+    const title = String(resource.title || "").trim();
+    const summary = String(resource.snippet || resource.summary || resource.description || "").trim();
+    const sourceRaw = resource.source;
+    const source =
+      typeof sourceRaw === "string"
+        ? sourceRaw.trim()
+        : String(asObject(sourceRaw).name || asObject(sourceRaw).title || "").trim();
+    const publishedAt = String(
+      resource.publishedAt || resource.published_at || resource.publish_time || resource.date || ""
+    ).trim();
+
+    return {
+      title,
+      url,
+      summary,
+      source: source || sourceNameFromUrl(url),
+      publishedAt
+    };
+  });
+}
+
+function buildFeloModeHint(llmModel: string) {
+  const model = sanitizeLlmModel(llmModel, "felo");
+  return model === "felo-pro"
+    ? "偏好模式：請提供較完整、較深入的分析。"
+    : "偏好模式：請提供重點清楚、較精簡的回答。";
+}
+
+function buildFeloQuery(prompt: string, llmModel: string, maxChars = 1900) {
+  return `${String(prompt || "").trim()}\n\n${buildFeloModeHint(llmModel)}`
+    .slice(0, maxChars)
+    .trim();
+}
+
+function isFeloSuccessPayload(payload: unknown) {
+  const body = asObject(payload);
+  const statusRaw = body.status;
+  const codeRaw = String(body.code || "").trim().toLowerCase();
+
+  if (typeof statusRaw === "number") {
+    if (statusRaw >= 200 && statusRaw < 300) {
+      return true;
+    }
+  }
+
+  const statusText = String(statusRaw || "").trim().toLowerCase();
+  if (statusText === "ok" || statusText === "success" || statusText === "200") {
+    return true;
+  }
+
+  if (codeRaw === "ok" || codeRaw === "success") {
+    return true;
+  }
+
+  return false;
+}
+
+function extractFeloErrorMessage(payload: unknown, fallback: string) {
+  const body = asObject(payload);
+  const code = String(body.code || "").trim();
+  const requestId = String(body.request_id || body.requestId || "").trim();
+  const message = String(body.message || "").trim();
+  const nested = extractErrorMessage(payload, "").trim();
+  const normalized = message || nested || String(body.error_description || "").trim();
+  const parts: string[] = [normalized || fallback];
+
+  if (code) {
+    parts.push(`code=${code}`);
+  }
+  if (requestId) {
+    parts.push(`request_id=${requestId}`);
+  }
+
+  if (!normalized) {
+    const raw = JSON.stringify(body);
+    if (raw && raw !== "{}") {
+      parts.push(`payload=${raw.slice(0, 220)}`);
+    }
+  }
+
+  return parts.join(" | ");
+}
+
+async function callFeloChatPayload(apiKey: string, query: string) {
+  const endpoint = "https://openapi.felo.ai/v2/chat";
+  const body = {
+    query: String(query || "").trim().slice(0, 2000)
+  };
+  const maxAttempts = 5;
+  let lastError = "Felo request failed";
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = extractFeloErrorMessage(
+        payload,
+        `Felo request failed: HTTP ${response.status}`
+      );
+      lastError = message;
+      if (attempt < maxAttempts && shouldRetry(response.status, message)) {
+        await waitMs(Math.min(12000, 1500 * attempt));
+        continue;
+      }
+      throw new Error(message);
+    }
+
+    if (!isFeloSuccessPayload(payload)) {
+      const status = String(asObject(payload).status || "").trim().toLowerCase();
+      const message = extractFeloErrorMessage(payload, `Felo request failed: status=${status}`);
+      lastError = message;
+      if (attempt < maxAttempts && shouldRetry(response.status, message)) {
+        await waitMs(Math.min(12000, 1500 * attempt));
+        continue;
+      }
+      throw new Error(message);
+    }
+
+    return payload;
+  }
+
+  throw new Error(lastError);
+}
+
 async function callGeminiGenerateText(
   apiKey: string,
   prompt: string,
@@ -527,6 +692,16 @@ async function callAnthropicGenerateText(apiKey: string, prompt: string, llmMode
   throw new Error(lastError);
 }
 
+async function callFeloGenerateText(apiKey: string, prompt: string, llmModel: string) {
+  const query = buildFeloQuery(prompt, llmModel, 1900);
+  const payload = await callFeloChatPayload(apiKey, query);
+  const text = readFeloText(payload);
+  if (!text) {
+    throw new Error("Felo 回傳空內容");
+  }
+  return trimGeneratedText(text);
+}
+
 async function callProviderGenerateText(settings: StoredSettings, prompt: string) {
   const provider = resolveProvider(settings);
   if (!settings.geminiApiKey) {
@@ -539,6 +714,10 @@ async function callProviderGenerateText(settings: StoredSettings, prompt: string
 
   if (provider === "anthropic") {
     return callAnthropicGenerateText(settings.geminiApiKey, prompt, settings.llmModel);
+  }
+
+  if (provider === "felo") {
+    return callFeloGenerateText(settings.geminiApiKey, prompt, settings.llmModel);
   }
 
   return callGeminiGenerateText(
@@ -597,6 +776,247 @@ export async function generatePostDraftFromContext(
 ) {
   const safeContext = String(context || "").trim().slice(0, 6000);
   return generatePostDraftWithOptionalContext(settings, runDate, safeContext, { recentDrafts });
+}
+
+export interface LlmNewsArticle {
+  title: string;
+  source: string;
+  publishedAt: string;
+  summary: string;
+  url: string;
+}
+
+function extractJsonBlock(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const unwrapped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  const arrayStart = unwrapped.indexOf("[");
+  const arrayEnd = unwrapped.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    return unwrapped.slice(arrayStart, arrayEnd + 1);
+  }
+
+  const objectStart = unwrapped.indexOf("{");
+  const objectEnd = unwrapped.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    return unwrapped.slice(objectStart, objectEnd + 1);
+  }
+
+  return "";
+}
+
+function parseLlmNewsArticles(rawText: string, maxItems: number): LlmNewsArticle[] {
+  const jsonBlock = extractJsonBlock(rawText);
+  if (!jsonBlock) {
+    return [];
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(jsonBlock);
+  } catch {
+    return [];
+  }
+
+  const payload = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(asObject(parsed).articles)
+      ? (asObject(parsed).articles as unknown[])
+      : [];
+  const uniqueByUrl = new Map<string, LlmNewsArticle>();
+
+  for (const item of payload) {
+    const row = asObject(item);
+    const title = String(row.title || "").trim();
+    const url = String(row.url || "").trim();
+    if (!title || !url) {
+      continue;
+    }
+    const source = String(row.source || "LLM").trim() || "LLM";
+    const publishedAt = String(row.publishedAt || row.published_at || row.date || "").trim();
+    const summary = String(row.summary || row.snippet || row.description || "").trim();
+
+    if (!uniqueByUrl.has(url)) {
+      uniqueByUrl.set(url, {
+        title,
+        source,
+        publishedAt,
+        summary,
+        url
+      });
+    }
+    if (uniqueByUrl.size >= maxItems) {
+      break;
+    }
+  }
+
+  return [...uniqueByUrl.values()].slice(0, maxItems);
+}
+
+function normalizeFeloNewsArticles(payload: unknown, maxItems: number) {
+  const resources = readFeloResources(payload);
+  const uniqueByUrl = new Map<string, LlmNewsArticle>();
+
+  for (const resource of resources) {
+    const url = String(resource.url || "").trim();
+    const title = String(resource.title || "").trim();
+    if (!url || !title) {
+      continue;
+    }
+
+    if (!uniqueByUrl.has(url)) {
+      uniqueByUrl.set(url, {
+        title,
+        source: String(resource.source || "Felo").trim() || "Felo",
+        publishedAt: String(resource.publishedAt || "").trim(),
+        summary: String(resource.summary || "").trim(),
+        url
+      });
+    }
+    if (uniqueByUrl.size >= maxItems) {
+      break;
+    }
+  }
+
+  return [...uniqueByUrl.values()].slice(0, maxItems);
+}
+
+async function generateNewsArticlesByFeloSearch(
+  apiKey: string,
+  llmModel: string,
+  keywords: string[],
+  lookbackDays: number,
+  maxItems: number
+) {
+  const query = buildFeloQuery(
+    [
+      "你是新聞搜尋助手，請搜尋最近幾天與關鍵字相關的新聞報導。",
+      `時間範圍：近 ${lookbackDays} 天。`,
+      `關鍵字：${keywords.join("、")}`,
+      `最多需要 ${maxItems} 則。`,
+      "優先高可信媒體來源，並盡量涵蓋不同來源。"
+    ].join("\n"),
+    llmModel,
+    1850
+  );
+
+  const payload = await callFeloChatPayload(apiKey, query);
+  return normalizeFeloNewsArticles(payload, maxItems);
+}
+
+function settingsWithNewsSearch(settings: StoredSettings) {
+  const provider = resolveProvider(settings);
+  if (provider === "gemini" && !settings.enableGrounding) {
+    return {
+      ...settings,
+      enableGrounding: true
+    };
+  }
+  return settings;
+}
+
+export async function generateNewsArticlesByLlm(
+  settings: StoredSettings,
+  keywords: string[],
+  lookbackDays: number,
+  maxItems: number
+) {
+  const safeKeywords = keywords.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 8);
+  if (!safeKeywords.length) {
+    return [] as LlmNewsArticle[];
+  }
+  if (!settings.geminiApiKey) {
+    throw new Error(`缺少 ${providerLabel(resolveProvider(settings))} API Key`);
+  }
+
+  const fetcherSettings = settingsWithNewsSearch(settings);
+  const provider = resolveProvider(fetcherSettings);
+  const maxCount = Math.max(1, Math.min(10, Number(maxItems) || 5));
+  let feedback = "";
+  let providerHint = "";
+
+  if (provider === "felo") {
+    try {
+      const feloArticles = await generateNewsArticlesByFeloSearch(
+        fetcherSettings.geminiApiKey,
+        fetcherSettings.llmModel,
+        safeKeywords,
+        lookbackDays,
+        maxCount
+      );
+      if (feloArticles.length > 0) {
+        return feloArticles;
+      }
+      providerHint = "Felo 搜尋有回應，但 resources 未提供可用新聞連結。";
+    } catch (error) {
+      providerHint = `Felo 搜尋失敗：${
+        error instanceof Error ? error.message : String(error || "未知錯誤")
+      }`;
+    }
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const prompt = [
+      "你是新聞研究助手。請查找近幾天與關鍵字相關的新聞，回傳 JSON 陣列。",
+      `時間範圍：近 ${lookbackDays} 天。`,
+      `關鍵字：${safeKeywords.join("、")}`,
+      `最多回傳 ${maxCount} 則。`,
+      "每筆欄位：title, source, publishedAt, summary, url。",
+      "限制：",
+      "- 只輸出 JSON（陣列或 {\"articles\": [...]}），不要任何額外說明文字",
+      "- 請使用標準 JSON 雙引號，禁止使用單引號或註解",
+      "- url 必須是可點擊的完整 https 連結",
+      "- summary 請簡短，不超過 80 個中文字",
+      feedback ? `修正要求：${feedback}` : ""
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const raw = await callProviderGenerateText(fetcherSettings, prompt);
+    const articles = parseLlmNewsArticles(raw, maxCount);
+    if (articles.length > 0) {
+      return articles;
+    }
+    feedback = "回傳格式錯誤或沒有有效新聞，請改成合法 JSON 並附上可用 url。";
+  }
+
+  if (providerHint) {
+    throw new Error(`LLM 新聞抓取失敗：無法取得可解析的新聞 JSON。${providerHint}`);
+  }
+
+  throw new Error("LLM 新聞抓取失敗：無法取得可解析的新聞 JSON。");
+}
+
+export async function generateImagePromptFromDraft(
+  settings: StoredSettings,
+  draft: string,
+  runDate: string
+) {
+  const safeDraft = String(draft || "").trim().slice(0, 900);
+  const prompt = [
+    "你是視覺設計助手，請根據貼文內容產生一段可用於 AI 生成圖片的英文提示詞。",
+    "限制：",
+    "- 只輸出一行英文 prompt，不要任何前後綴說明",
+    "- 長度 25 到 70 個英文單字",
+    "- 不要品牌 logo、不要文字浮水印、不要版權角色",
+    "- 畫面需有明確主體、場景、光線與風格",
+    `貼文日期：${runDate}`,
+    `貼文內容：${safeDraft}`
+  ].join("\n");
+
+  const raw = await callProviderGenerateText(settings, prompt);
+  return raw
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 360);
 }
 
 export async function generateCommentReply(

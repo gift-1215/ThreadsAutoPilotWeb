@@ -1,5 +1,6 @@
 import { Env, RunResult, StoredSettings } from "./types";
 import { generateCommentReply } from "./gemini";
+import { resolveStageLlmSettings } from "./llm-stage-settings";
 import { insertRun } from "./runs";
 import {
   fetchRecentThreads,
@@ -115,6 +116,7 @@ async function executeReplySweep(
 
   try {
     const { posts, pending, scannedCommentCount } = await collectPendingComments(settings);
+    const draftLlmSettings = resolveStageLlmSettings(settings, "draft");
 
     if (posts.length === 0) {
       const runId = await insertRun(
@@ -152,7 +154,7 @@ async function executeReplySweep(
       };
     }
 
-    if (!settings.geminiApiKey) {
+    if (!draftLlmSettings.geminiApiKey) {
       const message = `已用 Threads token 掃描最近 ${Math.min(posts.length, RECENT_POST_SCAN_LIMIT)} 篇貼文，發現 ${pending.length} 則未回覆留言，但缺少 LLM API Key 無法自動回覆`;
       const runId = await insertRun(
         env,
@@ -178,7 +180,11 @@ async function executeReplySweep(
 
     for (const target of replyTargets) {
       try {
-        const replyText = await generateCommentReply(settings, target.postText, target.commentText);
+        const replyText = await generateCommentReply(
+          draftLlmSettings,
+          target.postText,
+          target.commentText
+        );
         await publishReplyToThread(settings.threadsToken, target.commentId, replyText);
         repliedCount += 1;
       } catch (error) {

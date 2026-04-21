@@ -31,6 +31,15 @@ export interface UserSettingsRow {
   gemini_api_key: string | null;
   llm_provider: string | null;
   llm_model: string | null;
+  news_llm_provider?: string | null;
+  news_llm_model?: string | null;
+  news_llm_api_key?: string | null;
+  draft_llm_provider?: string | null;
+  draft_llm_model?: string | null;
+  draft_llm_api_key?: string | null;
+  image_llm_provider?: string | null;
+  image_llm_model?: string | null;
+  image_llm_api_key?: string | null;
   enable_grounding: number;
   post_instruction: string | null;
   post_style: string | null;
@@ -43,6 +52,7 @@ export interface UserSettingsRow {
   news_fetch_time: string;
   news_max_items: number;
   news_provider: string | null;
+  image_enabled: number | null;
   timezone: string;
   enabled: number;
 }
@@ -62,6 +72,8 @@ export interface PendingDraftRow {
   draft: string;
   llm_model: string;
   enable_grounding: number;
+  image_url: string | null;
+  image_prompt: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +83,15 @@ export interface StoredSettings {
   geminiApiKey: string;
   llmProvider: string;
   llmModel: string;
+  newsLlmProvider: string;
+  newsLlmModel: string;
+  newsLlmApiKey: string;
+  draftLlmProvider: string;
+  draftLlmModel: string;
+  draftLlmApiKey: string;
+  imageLlmProvider: string;
+  imageLlmModel: string;
+  imageLlmApiKey: string;
   enableGrounding: boolean;
   postInstruction: string;
   postStyle: string;
@@ -81,6 +102,7 @@ export interface StoredSettings {
   newsFetchTime: string;
   newsMaxItems: number;
   newsProvider: string;
+  imageEnabled: boolean;
   timezone: string;
   enabled: boolean;
 }

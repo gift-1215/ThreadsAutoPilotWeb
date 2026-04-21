@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler d1 migrations apply threads_autopilot --remote && wrangler deploy",
     "db:create": "wrangler d1 create threads_autopilot",
     "db:migrate:local": "wrangler d1 migrations apply threads_autopilot --local",
     "db:migrate:remote": "wrangler d1 migrations apply threads_autopilot --remote"

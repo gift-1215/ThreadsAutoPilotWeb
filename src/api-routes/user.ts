@@ -1,4 +1,4 @@
-import { createPreviewDraft, publishDraftRun } from "../posting";
+import { createPreviewDraft, generatePendingDraftImage, publishDraftRun } from "../posting";
 import { executeManualNewsPrefill } from "../news";
 import { executeManualReplySweep } from "../replies";
 import { deletePendingDraft, deleteRuns, getPendingDraft, listRuns, upsertPendingDraft } from "../runs";
@@ -68,7 +68,11 @@ export async function handleUserApiRoutes(
     }
 
     const settings = await getSettings(env, session.user_id);
-    await upsertPendingDraft(env, session.user_id, draft, settings);
+    const existingPending = await getPendingDraft(env, session.user_id);
+    await upsertPendingDraft(env, session.user_id, draft, settings, {
+      imageUrl: existingPending?.image_url || "",
+      imagePrompt: existingPending?.image_prompt || ""
+    });
     const pendingDraft = await getPendingDraft(env, session.user_id);
     return jsonResponse({ ok: true, pendingDraft });
   }
@@ -102,11 +106,18 @@ export async function handleUserApiRoutes(
     return jsonResponse({ result });
   }
 
+  if (url.pathname === "/api/pending-draft/generate-image" && method === "POST") {
+    const settings = await getSettings(env, session.user_id);
+    const result = await generatePendingDraftImage(env, session.user_id, settings, new Date());
+    return jsonResponse({ result });
+  }
+
   if (url.pathname === "/api/pending-draft/publish" && method === "POST") {
     const payload = await parseOptionalJsonBody<{ draft?: unknown }>(request, {});
     const draftOverride = normalizeDraft(sanitizeText(payload.draft, 2000));
     const pending = await getPendingDraft(env, session.user_id);
     const draft = draftOverride || pending?.draft || "";
+    const pendingImageUrl = String(pending?.image_url || "").trim();
     if (!draft) {
       return jsonResponse({ error: "目前沒有可發送的草稿，請先產生草稿。" }, 400);
     }
@@ -118,7 +129,10 @@ export async function handleUserApiRoutes(
 
     const settings = await getSettings(env, session.user_id);
     if (draftOverride && draftOverride !== pending?.draft) {
-      await upsertPendingDraft(env, session.user_id, draftOverride, settings);
+      await upsertPendingDraft(env, session.user_id, draftOverride, settings, {
+        imageUrl: pending?.image_url || "",
+        imagePrompt: pending?.image_prompt || ""
+      });
     }
     const result = await publishDraftRun(
       env,
@@ -126,6 +140,7 @@ export async function handleUserApiRoutes(
       settings,
       "manual_publish",
       draft,
+      pendingImageUrl,
       new Date()
     );
     if (result.status === "success") {

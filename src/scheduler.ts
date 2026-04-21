@@ -7,6 +7,18 @@ import { getLocalDateTime, safeErrorMessage, shouldTriggerNow } from "./utils";
 
 const MISSING_PROVIDER_COLUMN = "no such column: llm_provider";
 const MISSING_NEWS_PROVIDER_COLUMN = "no such column: news_provider";
+const MISSING_IMAGE_ENABLED_COLUMN = "no such column: image_enabled";
+const STAGE_LLM_COLUMNS = [
+  "news_llm_provider",
+  "news_llm_model",
+  "news_llm_api_key",
+  "draft_llm_provider",
+  "draft_llm_model",
+  "draft_llm_api_key",
+  "image_llm_provider",
+  "image_llm_model",
+  "image_llm_api_key"
+] as const;
 
 function isMissingProviderColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_PROVIDER_COLUMN);
@@ -14,6 +26,15 @@ function isMissingProviderColumnError(error: unknown) {
 
 function isMissingNewsProviderColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_NEWS_PROVIDER_COLUMN);
+}
+
+function isMissingImageEnabledColumnError(error: unknown) {
+  return safeErrorMessage(error).toLowerCase().includes(MISSING_IMAGE_ENABLED_COLUMN);
+}
+
+function isMissingStageLlmColumnError(error: unknown) {
+  const message = safeErrorMessage(error).toLowerCase();
+  return STAGE_LLM_COLUMNS.some((column) => message.includes(`no such column: ${column}`));
 }
 
 function isMissingNewsColumnError(error: unknown) {
@@ -40,7 +61,8 @@ function withDefaultNewsFields(
     news_keywords: "",
     news_fetch_time: "08:00",
     news_max_items: 5,
-    news_provider: null
+    news_provider: null,
+    image_enabled: 0
   };
 }
 
@@ -62,8 +84,92 @@ function withDefaultProviderAndNewsFields(
     news_keywords: "",
     news_fetch_time: "08:00",
     news_max_items: 5,
-    news_provider: null
+    news_provider: null,
+    image_enabled: 0
   };
+}
+
+async function enrichImageEnabledFlags(env: Env, users: SchedulerUserRow[]) {
+  if (!users.length) {
+    return users;
+  }
+
+  try {
+    const query = await env.DB.prepare(
+      `SELECT user_id, image_enabled
+       FROM user_settings
+       WHERE enabled = 1`
+    ).all<{ user_id: number; image_enabled: number | null }>();
+    const imageMap = new Map<number, number>();
+    for (const row of query.results || []) {
+      imageMap.set(Number(row.user_id), Number(row.image_enabled || 0));
+    }
+    return users.map((row) => ({
+      ...row,
+      image_enabled: imageMap.get(Number(row.user_id)) || 0
+    }));
+  } catch (error) {
+    if (isMissingImageEnabledColumnError(error)) {
+      return users.map((row) => ({ ...row, image_enabled: 0 }));
+    }
+    throw error;
+  }
+}
+
+async function enrichStageLlmFields(env: Env, users: SchedulerUserRow[]) {
+  if (!users.length) {
+    return users;
+  }
+
+  try {
+    const query = await env.DB.prepare(
+      `SELECT
+        user_id,
+        news_llm_provider,
+        news_llm_model,
+        news_llm_api_key,
+        draft_llm_provider,
+        draft_llm_model,
+        draft_llm_api_key,
+        image_llm_provider,
+        image_llm_model,
+        image_llm_api_key
+       FROM user_settings
+       WHERE enabled = 1`
+    ).all<
+      Pick<
+        SchedulerUserRow,
+        | "user_id"
+        | "news_llm_provider"
+        | "news_llm_model"
+        | "news_llm_api_key"
+        | "draft_llm_provider"
+        | "draft_llm_model"
+        | "draft_llm_api_key"
+        | "image_llm_provider"
+        | "image_llm_model"
+        | "image_llm_api_key"
+      >
+    >();
+    const stageMap = new Map<number, Record<string, unknown>>();
+    for (const row of query.results || []) {
+      stageMap.set(Number(row.user_id), row as Record<string, unknown>);
+    }
+    return users.map((row) => {
+      const stage = stageMap.get(Number(row.user_id));
+      return stage ? { ...row, ...stage } : row;
+    });
+  } catch (error) {
+    if (isMissingStageLlmColumnError(error)) {
+      return users;
+    }
+    throw error;
+  }
+}
+
+async function enrichOptionalSettingColumns(env: Env, users: SchedulerUserRow[]) {
+  const withImage = await enrichImageEnabledFlags(env, users);
+  return enrichStageLlmFields(env, withImage);
 }
 
 async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
@@ -94,7 +200,7 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
       WHERE s.enabled = 1`
     ).all<SchedulerUserRow>();
 
-    return query.results || [];
+    return enrichOptionalSettingColumns(env, query.results || []);
   } catch (error) {
     if (isMissingNewsProviderColumnError(error)) {
       try {
@@ -123,10 +229,13 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
           WHERE s.enabled = 1`
         ).all<Omit<SchedulerUserRow, "news_provider">>();
 
-        return (queryWithoutNewsProvider.results || []).map((row) => ({
-          ...row,
-          news_provider: null
-        }));
+        return enrichOptionalSettingColumns(
+          env,
+          (queryWithoutNewsProvider.results || []).map((row) => ({
+            ...row,
+            news_provider: null
+          }))
+        );
       } catch (errorWithoutNewsProvider) {
         if (isMissingNewsColumnError(errorWithoutNewsProvider)) {
           const queryWithoutNews = await env.DB.prepare(
@@ -152,7 +261,10 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
             Omit<SchedulerUserRow, "news_enabled" | "news_keywords" | "news_fetch_time" | "news_max_items" | "news_provider">
           >();
 
-          return (queryWithoutNews.results || []).map(withDefaultNewsFields);
+          return enrichOptionalSettingColumns(
+            env,
+            (queryWithoutNews.results || []).map(withDefaultNewsFields)
+          );
         }
 
         if (!isMissingProviderColumnError(errorWithoutNewsProvider)) {
@@ -184,7 +296,10 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
           >
         >();
 
-        return (legacyQuery.results || []).map(withDefaultProviderAndNewsFields);
+        return enrichOptionalSettingColumns(
+          env,
+          (legacyQuery.results || []).map(withDefaultProviderAndNewsFields)
+        );
       }
     }
 
@@ -216,7 +331,10 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
           >
         >();
 
-        return (queryWithoutNews.results || []).map(withDefaultNewsFields);
+        return enrichOptionalSettingColumns(
+          env,
+          (queryWithoutNews.results || []).map(withDefaultNewsFields)
+        );
       } catch (errorWithoutNews) {
         if (!isMissingProviderColumnError(errorWithoutNews)) {
           throw errorWithoutNews;
@@ -252,7 +370,10 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
           >
         >();
 
-        return (legacyQuery.results || []).map(withDefaultProviderAndNewsFields);
+        return enrichOptionalSettingColumns(
+          env,
+          (legacyQuery.results || []).map(withDefaultProviderAndNewsFields)
+        );
       }
     }
 
@@ -287,7 +408,10 @@ async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {
         >
       >();
 
-      return (legacyQuery.results || []).map(withDefaultProviderAndNewsFields);
+      return enrichOptionalSettingColumns(
+        env,
+        (legacyQuery.results || []).map(withDefaultProviderAndNewsFields)
+      );
     }
 
     throw error;

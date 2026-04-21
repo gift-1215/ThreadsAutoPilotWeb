@@ -17,7 +17,7 @@ import {
   setManualReplyLoading,
   setSettingsSaveState,
   showToast,
-  syncLlmProviderUi
+  syncStageLlmProviderUi
 } from "./ui.js";
 import { validateDraftText } from "./validation.js";
 
@@ -89,6 +89,24 @@ export function attachEventListeners() {
     });
   }
 
+  if (el.generateDraftImageBtn) {
+    el.generateDraftImageBtn.addEventListener("click", async () => {
+      await flushDraftSave();
+      setLoading(true, "正在生成新聞圖片，請稍候...");
+      try {
+        const resp = await api("/api/pending-draft/generate-image", { method: "POST", body: "{}" });
+        const result = resp.result || {};
+        showToast(result.message || "已生成新聞圖片");
+        await refreshRunsAndPending();
+        setActiveStep("draft");
+      } catch (error) {
+        showToast(`生成新聞圖片失敗：${error.message}`, 5000);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+
   if (el.runNewsNowBtn) {
     el.runNewsNowBtn.addEventListener("click", async () => {
       setLoading(true, "正在抓取近兩天新聞並整理摘要...");
@@ -101,23 +119,6 @@ export function attachEventListeners() {
         setActiveStep("draft");
       } catch (error) {
         showToast(`新聞抓取失敗：${error.message}`, 5000);
-      } finally {
-        setLoading(false);
-      }
-    });
-  }
-
-  if (el.regenerateDraftBtn) {
-    el.regenerateDraftBtn.addEventListener("click", async () => {
-      setLoading(true, "正在重新產生草稿，請稍候...");
-      try {
-        const resp = await api("/api/pending-draft/regenerate", { method: "POST", body: "{}" });
-        const result = resp.result || {};
-        showToast(result.message || "草稿已重新產生");
-        await refreshRunsAndPending();
-        setActiveStep("draft");
-      } catch (error) {
-        showToast(`重生草稿失敗：${error.message}`, 5000);
       } finally {
         setLoading(false);
       }
@@ -245,9 +246,29 @@ export function attachEventListeners() {
     });
   }
 
-  if (el.llmProvider) {
-    el.llmProvider.addEventListener("change", () => {
-      syncLlmProviderUi(el.llmProvider?.value || "gemini", el.llmModel?.value || "");
+  if (el.newsLlmProvider) {
+    el.newsLlmProvider.addEventListener("change", () => {
+      syncStageLlmProviderUi("news", el.newsLlmProvider?.value || "gemini", el.newsLlmModel?.value || "");
+    });
+  }
+
+  if (el.draftLlmProvider) {
+    el.draftLlmProvider.addEventListener("change", () => {
+      syncStageLlmProviderUi(
+        "draft",
+        el.draftLlmProvider?.value || "gemini",
+        el.draftLlmModel?.value || ""
+      );
+    });
+  }
+
+  if (el.imageLlmProvider) {
+    el.imageLlmProvider.addEventListener("change", () => {
+      syncStageLlmProviderUi(
+        "image",
+        el.imageLlmProvider?.value || "gemini",
+        el.imageLlmModel?.value || ""
+      );
     });
   }
 
