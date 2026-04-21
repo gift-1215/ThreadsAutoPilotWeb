@@ -374,26 +374,11 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
   if (el.clearRunsConfirmText) {
     el.clearRunsConfirmText.disabled = isLoading;
   }
-  if (el.logoutBtn) {
-    el.logoutBtn.disabled = isLoading;
-  }
-  if (el.stepTabSettings) {
-    el.stepTabSettings.disabled = isLoading;
-  }
-  if (el.stepTabDraft) {
-    el.stepTabDraft.disabled = isLoading;
-  }
-  if (el.stepTabRuns) {
-    el.stepTabRuns.disabled = isLoading;
-  }
   if (el.publishDraftBtn) {
     el.publishDraftBtn.disabled = isLoading || !state.hasPendingDraft;
   }
   if (el.manualReplyBtn) {
     el.manualReplyBtn.disabled = isLoading || state.manualReplyLoading;
-  }
-  if (el.draftPreview) {
-    el.draftPreview.disabled = isLoading;
   }
 
   if (el.loadingIndicator) {
@@ -401,6 +386,12 @@ export function setLoading(isLoading, text = "等待 LLM 回覆中...") {
   }
   if (el.loadingText) {
     el.loadingText.textContent = text;
+  }
+  if (el.activityIndicator) {
+    el.activityIndicator.classList.toggle("hidden", !isLoading);
+  }
+  if (el.activityText) {
+    el.activityText.textContent = text || "作業進行中...";
   }
 }
 
@@ -542,7 +533,6 @@ export function renderPendingDraft(pendingDraft) {
 
   if (el.draftPreview) {
     el.draftPreview.value = draftText;
-    el.draftPreview.disabled = state.isLoading;
     if (!hasDraft) {
       el.draftPreview.placeholder = "可直接鍵盤輸入下一篇草稿，系統會自動儲存。";
     }

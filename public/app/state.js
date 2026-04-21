@@ -71,6 +71,8 @@ export const el = {
   clearRunsConfirmText: document.querySelector("#clearRunsConfirmText"),
   loadingIndicator: document.querySelector("#loadingIndicator"),
   loadingText: document.querySelector("#loadingText"),
+  activityIndicator: document.querySelector("#activityIndicator"),
+  activityText: document.querySelector("#activityText"),
   draftPreview: document.querySelector("#draftPreview"),
   draftEditStatus: document.querySelector("#draftEditStatus"),
   nextDraftMeta: document.querySelector("#nextDraftMeta"),

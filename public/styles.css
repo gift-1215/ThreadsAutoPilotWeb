@@ -798,6 +798,38 @@ th {
   box-shadow: var(--shadow);
 }
 
+.activityIndicator {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(78vw, 420px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #bfdbfe;
+  background: rgba(239, 246, 255, 0.95);
+  color: #1e3a8a;
+  line-height: 1.35;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(4px);
+}
+
+.activitySpinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  flex: 0 0 auto;
+}
+
+:root[data-theme="dark"] .activityIndicator {
+  border-color: rgba(104, 154, 226, 0.55);
+  background: rgba(19, 46, 86, 0.8);
+  color: #cfe2ff;
+}
+
 .hidden {
   display: none !important;
 }
@@ -842,6 +874,12 @@ th {
 
   .hero h1 {
     font-size: 1.4rem;
+  }
+
+  .activityIndicator {
+    top: 10px;
+    right: 10px;
+    max-width: calc(100vw - 20px);
   }
 }
 
