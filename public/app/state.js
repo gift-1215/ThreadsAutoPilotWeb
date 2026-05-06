@@ -54,6 +54,7 @@ export const el = {
   postTime: document.querySelector("#postTime"),
   replyTimes: document.querySelector("#replyTimes"),
   newsKeywords: document.querySelector("#newsKeywords"),
+  newsBlockedSources: document.querySelector("#newsBlockedSources"),
   newsFetchTime: document.querySelector("#newsFetchTime"),
   newsMaxItems: document.querySelector("#newsMaxItems"),
   newsProvider: document.querySelector("#newsProvider"),

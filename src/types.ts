@@ -52,6 +52,7 @@ export interface UserSettingsRow {
   news_fetch_time: string;
   news_max_items: number;
   news_provider: string | null;
+  news_blocked_sources?: string | null;
   image_enabled: number | null;
   timezone: string;
   enabled: number;
@@ -99,6 +100,7 @@ export interface StoredSettings {
   replyTimes: string[];
   newsEnabled: boolean;
   newsKeywords: string[];
+  newsBlockedSources: string[];
   newsFetchTime: string;
   newsMaxItems: number;
   newsProvider: string;

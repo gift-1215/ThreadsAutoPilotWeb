@@ -185,12 +185,65 @@ function fromIsoByLookbackDays(now: Date, days: number) {
   return target.toISOString();
 }
 
-function normalizeArticles(rawArticles: NewsArticle[], maxItems: number) {
+function parseArticleHostname(url: string) {
+  const raw = String(url || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const parseCandidate = (value: string) => {
+    try {
+      return new URL(value).hostname.toLowerCase().replace(/\.+$/g, "");
+    } catch {
+      return "";
+    }
+  };
+
+  const direct = parseCandidate(raw);
+  if (direct) {
+    return direct.startsWith("www.") ? direct.slice(4) : direct;
+  }
+
+  const withProtocol = parseCandidate(`https://${raw.replace(/^\/+/, "")}`);
+  if (withProtocol) {
+    return withProtocol.startsWith("www.") ? withProtocol.slice(4) : withProtocol;
+  }
+
+  return "";
+}
+
+function isBlockedByDomain(article: NewsArticle, blockedDomains: string[]) {
+  if (!blockedDomains.length) {
+    return false;
+  }
+
+  const host = parseArticleHostname(String(article.url || ""));
+  if (!host) {
+    return false;
+  }
+
+  for (const domain of blockedDomains) {
+    const blocked = String(domain || "").trim().toLowerCase();
+    if (!blocked) {
+      continue;
+    }
+    if (host === blocked || host.endsWith(`.${blocked}`)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function normalizeArticles(rawArticles: NewsArticle[], maxItems: number, blockedDomains: string[]) {
   const deduped = new Map<string, NewsArticle>();
   for (const article of rawArticles) {
     const title = String(article.title || "").trim();
     const url = String(article.url || "").trim();
     if (!title || !url) {
+      continue;
+    }
+    if (isBlockedByDomain(article, blockedDomains)) {
       continue;
     }
 
@@ -461,7 +514,8 @@ async function requestGNewsByPreset(
   preset: GNewsQueryPreset,
   now: Date,
   fetchLimit: number,
-  normalizeLimit: number
+  normalizeLimit: number,
+  blockedDomains: string[]
 ) {
   const endpoint = new URL("https://gnews.io/api/v4/search");
   endpoint.searchParams.set("q", preset.query);
@@ -495,13 +549,14 @@ async function requestGNewsByPreset(
   }
 
   const rawArticles = Array.isArray(payload.articles) ? payload.articles : [];
-  return normalizeArticles(rawArticles, normalizeLimit);
+  return normalizeArticles(rawArticles, normalizeLimit, blockedDomains);
 }
 
 async function requestGoogleRssByPreset(
   preset: RssQueryPreset,
   now: Date,
-  normalizeLimit: number
+  normalizeLimit: number,
+  blockedDomains: string[]
 ): Promise<NewsArticle[]> {
   const endpoint = new URL("https://news.google.com/rss/search");
   endpoint.searchParams.set("q", preset.query);
@@ -528,7 +583,7 @@ async function requestGoogleRssByPreset(
 
   const xmlText = await response.text();
   const articles = parseGoogleRssArticles(xmlText, now);
-  return normalizeArticles(articles, normalizeLimit);
+  return normalizeArticles(articles, normalizeLimit, blockedDomains);
 }
 
 async function fetchGNewsArticles(
@@ -555,13 +610,21 @@ async function fetchGNewsArticles(
   const queryPresets = buildGNewsQueryPresets(settings.newsKeywords);
   const fetchLimit = Math.min(10, Math.max(2, settings.newsMaxItems * 2));
   const normalizeLimit = Math.max(settings.newsMaxItems * 3, settings.newsMaxItems);
+  const blockedDomains = settings.newsBlockedSources || [];
   const attempts: NewsQueryAttemptResult[] = [];
   const combinedArticles: NewsArticle[] = [];
   let rateLimited = false;
 
   for (const preset of queryPresets) {
     try {
-      const articles = await requestGNewsByPreset(apiKey, preset, now, fetchLimit, normalizeLimit);
+      const articles = await requestGNewsByPreset(
+        apiKey,
+        preset,
+        now,
+        fetchLimit,
+        normalizeLimit,
+        blockedDomains
+      );
       attempts.push({
         label: preset.label,
         query: preset.query,
@@ -573,7 +636,7 @@ async function fetchGNewsArticles(
 
       if (articles.length > 0) {
         combinedArticles.push(...articles);
-        const normalized = normalizeArticles(combinedArticles, settings.newsMaxItems);
+        const normalized = normalizeArticles(combinedArticles, settings.newsMaxItems, blockedDomains);
         return {
           articles: normalized,
           attempts,
@@ -657,13 +720,14 @@ async function fetchGoogleRssArticles(
   const queryPresets = buildGoogleRssQueryPresets(settings.newsKeywords);
   const normalizeLimit = Math.max(settings.newsMaxItems * 3, settings.newsMaxItems);
   const targetCount = settings.newsMaxItems;
+  const blockedDomains = settings.newsBlockedSources || [];
   const attempts: NewsQueryAttemptResult[] = [];
   const combinedArticles: NewsArticle[] = [];
   let rateLimited = false;
 
   for (const preset of queryPresets) {
     try {
-      const articles = await requestGoogleRssByPreset(preset, now, normalizeLimit);
+      const articles = await requestGoogleRssByPreset(preset, now, normalizeLimit, blockedDomains);
       attempts.push({
         label: preset.label,
         query: preset.query,
@@ -677,7 +741,7 @@ async function fetchGoogleRssArticles(
         combinedArticles.push(...articles);
       }
 
-      const normalized = normalizeArticles(combinedArticles, targetCount);
+      const normalized = normalizeArticles(combinedArticles, targetCount, blockedDomains);
       if (normalized.length >= targetCount) {
         return {
           articles: normalized,
@@ -716,7 +780,7 @@ async function fetchGoogleRssArticles(
   }
 
   const successCount = attempts.filter((attempt) => attempt.status === "success").length;
-  const normalizedCombined = normalizeArticles(combinedArticles, targetCount);
+  const normalizedCombined = normalizeArticles(combinedArticles, targetCount, blockedDomains);
   if (normalizedCombined.length > 0) {
     return {
       articles: normalizedCombined,
@@ -789,7 +853,8 @@ async function fetchLlmNewsArticles(
         publishedAt: item.publishedAt,
         source: { name: item.source }
       })),
-      settings.newsMaxItems
+      settings.newsMaxItems,
+      settings.newsBlockedSources || []
     );
     attempts.push({
       label: "LLM 抓新聞",
@@ -1052,6 +1117,7 @@ async function executeNewsPrefill(
     let imageUrl = "";
     let imagePrompt = "";
     let imageError = "";
+    let imageWarning = "";
     if (settings.imageEnabled) {
       try {
         const imageLlmSettings = resolveStageLlmSettings(settings, "image");
@@ -1061,6 +1127,7 @@ async function executeNewsPrefill(
         const image = await generateDraftImageAsset(imageLlmSettings, draft, localNow.dateKey);
         imageUrl = image.imageUrl;
         imagePrompt = image.imagePrompt;
+        imageWarning = String(image.warning || "").trim();
       } catch (error) {
         imageError = safeErrorMessage(error);
       }
@@ -1076,7 +1143,11 @@ async function executeNewsPrefill(
       `來源：${providerLabel(fetchResult.providerUsed)}`,
       `關鍵字：${settings.newsKeywords.join("、")}`,
       firstTitle ? `最新：${firstTitle}` : "",
-      imageUrl ? "已產生新聞草稿與配圖" : imageError ? `已產生新聞草稿（配圖失敗：${imageError}）` : "已產生新聞草稿"
+      imageUrl
+        ? `已產生新聞草稿與配圖${imageWarning ? `（${imageWarning}）` : ""}`
+        : imageError
+          ? `已產生新聞草稿（配圖失敗：${imageError}）`
+          : "已產生新聞草稿"
     ]
       .filter(Boolean)
       .join("，");

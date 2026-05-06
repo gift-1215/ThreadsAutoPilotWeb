@@ -267,11 +267,13 @@ export async function ensureNextDraftForScheduledWindow(
     let imageUrl = "";
     let imagePrompt = "";
     let imageError = "";
+    let imageWarning = "";
     if (settings.imageEnabled && imageLlmSettings.geminiApiKey) {
       try {
         const image = await generateDraftImageAsset(imageLlmSettings, draft, runDate);
         imageUrl = image.imageUrl;
         imagePrompt = image.imagePrompt;
+        imageWarning = String(image.warning || "").trim();
       } catch (error) {
         imageError = safeErrorMessage(error);
       }
@@ -286,7 +288,9 @@ export async function ensureNextDraftForScheduledWindow(
       "scheduled_prefill",
       runDate,
       "success",
-      imageUrl ? "已自動補齊下一篇草稿（含配圖）" : `已自動補齊下一篇草稿${imageError ? `（配圖失敗：${imageError}）` : ""}`,
+      imageUrl
+        ? `已自動補齊下一篇草稿（含配圖${imageWarning ? `，${imageWarning}` : ""}）`
+        : `已自動補齊下一篇草稿${imageError ? `（配圖失敗：${imageError}）` : ""}`,
       draft
     );
   } catch (error) {
@@ -342,7 +346,10 @@ export async function generatePendingDraftImage(
       imageUrl: image.imageUrl,
       imagePrompt: image.imagePrompt
     });
-    const message = "已生成新聞圖片，可直接隨草稿發佈。";
+    const warningText = String(image.warning || "").trim();
+    const message = warningText
+      ? `已生成新聞圖片（${warningText}）`
+      : "已生成新聞圖片，可直接隨草稿發佈。";
     const runId = await insertRun(
       env,
       userId,

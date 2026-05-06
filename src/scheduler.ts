@@ -7,6 +7,7 @@ import { getLocalDateTime, safeErrorMessage, shouldTriggerNow } from "./utils";
 
 const MISSING_PROVIDER_COLUMN = "no such column: llm_provider";
 const MISSING_NEWS_PROVIDER_COLUMN = "no such column: news_provider";
+const MISSING_NEWS_BLOCKED_SOURCES_COLUMN = "no such column: news_blocked_sources";
 const MISSING_IMAGE_ENABLED_COLUMN = "no such column: image_enabled";
 const STAGE_LLM_COLUMNS = [
   "news_llm_provider",
@@ -32,6 +33,10 @@ function isMissingImageEnabledColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_IMAGE_ENABLED_COLUMN);
 }
 
+function isMissingNewsBlockedSourcesColumnError(error: unknown) {
+  return safeErrorMessage(error).toLowerCase().includes(MISSING_NEWS_BLOCKED_SOURCES_COLUMN);
+}
+
 function isMissingStageLlmColumnError(error: unknown) {
   const message = safeErrorMessage(error).toLowerCase();
   return STAGE_LLM_COLUMNS.some((column) => message.includes(`no such column: ${column}`));
@@ -43,7 +48,8 @@ function isMissingNewsColumnError(error: unknown) {
     message.includes("no such column: news_enabled") ||
     message.includes("no such column: news_keywords") ||
     message.includes("no such column: news_fetch_time") ||
-    message.includes("no such column: news_max_items")
+    message.includes("no such column: news_max_items") ||
+    message.includes("no such column: news_blocked_sources")
   );
 }
 
@@ -62,6 +68,7 @@ function withDefaultNewsFields(
     news_fetch_time: "08:00",
     news_max_items: 5,
     news_provider: null,
+    news_blocked_sources: "",
     image_enabled: 0
   };
 }
@@ -85,6 +92,7 @@ function withDefaultProviderAndNewsFields(
     news_fetch_time: "08:00",
     news_max_items: 5,
     news_provider: null,
+    news_blocked_sources: "",
     image_enabled: 0
   };
 }
@@ -111,6 +119,33 @@ async function enrichImageEnabledFlags(env: Env, users: SchedulerUserRow[]) {
   } catch (error) {
     if (isMissingImageEnabledColumnError(error)) {
       return users.map((row) => ({ ...row, image_enabled: 0 }));
+    }
+    throw error;
+  }
+}
+
+async function enrichNewsBlockedSources(env: Env, users: SchedulerUserRow[]) {
+  if (!users.length) {
+    return users;
+  }
+
+  try {
+    const query = await env.DB.prepare(
+      `SELECT user_id, news_blocked_sources
+       FROM user_settings
+       WHERE enabled = 1`
+    ).all<{ user_id: number; news_blocked_sources: string | null }>();
+    const blockedMap = new Map<number, string>();
+    for (const row of query.results || []) {
+      blockedMap.set(Number(row.user_id), String(row.news_blocked_sources || ""));
+    }
+    return users.map((row) => ({
+      ...row,
+      news_blocked_sources: blockedMap.get(Number(row.user_id)) || ""
+    }));
+  } catch (error) {
+    if (isMissingNewsBlockedSourcesColumnError(error)) {
+      return users.map((row) => ({ ...row, news_blocked_sources: "" }));
     }
     throw error;
   }
@@ -169,7 +204,8 @@ async function enrichStageLlmFields(env: Env, users: SchedulerUserRow[]) {
 
 async function enrichOptionalSettingColumns(env: Env, users: SchedulerUserRow[]) {
   const withImage = await enrichImageEnabledFlags(env, users);
-  return enrichStageLlmFields(env, withImage);
+  const withBlockedSources = await enrichNewsBlockedSources(env, withImage);
+  return enrichStageLlmFields(env, withBlockedSources);
 }
 
 async function loadSchedulerUsers(env: Env): Promise<SchedulerUserRow[]> {

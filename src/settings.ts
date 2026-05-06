@@ -9,6 +9,7 @@ import {
   sanitizeLlmModel,
   sanitizeLlmProvider,
   sanitizeNewsKeywords,
+  sanitizeNewsBlockedSources,
   sanitizeNewsMaxItems,
   sanitizeNewsProvider,
   sanitizePostTime,
@@ -22,6 +23,7 @@ const DEFAULT_NEWS_FETCH_TIME = "08:00";
 const DEFAULT_NEWS_MAX_ITEMS = 5;
 const MISSING_PROVIDER_COLUMN = "no such column: llm_provider";
 const MISSING_NEWS_PROVIDER_COLUMN = "no such column: news_provider";
+const MISSING_NEWS_BLOCKED_SOURCES_COLUMN = "no such column: news_blocked_sources";
 const MISSING_IMAGE_ENABLED_COLUMN = "no such column: image_enabled";
 const STAGE_LLM_COLUMNS = [
   "news_llm_provider",
@@ -43,6 +45,10 @@ function isMissingNewsProviderColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_NEWS_PROVIDER_COLUMN);
 }
 
+function isMissingNewsBlockedSourcesColumnError(error: unknown) {
+  return safeErrorMessage(error).toLowerCase().includes(MISSING_NEWS_BLOCKED_SOURCES_COLUMN);
+}
+
 function isMissingImageEnabledColumnError(error: unknown) {
   return safeErrorMessage(error).toLowerCase().includes(MISSING_IMAGE_ENABLED_COLUMN);
 }
@@ -58,7 +64,8 @@ function isMissingNewsColumnError(error: unknown) {
     message.includes("no such column: news_enabled") ||
     message.includes("no such column: news_keywords") ||
     message.includes("no such column: news_fetch_time") ||
-    message.includes("no such column: news_max_items")
+    message.includes("no such column: news_max_items") ||
+    message.includes("no such column: news_blocked_sources")
   );
 }
 
@@ -75,6 +82,7 @@ function withDefaultNewsFields(
     news_fetch_time: DEFAULT_NEWS_FETCH_TIME,
     news_max_items: DEFAULT_NEWS_MAX_ITEMS,
     news_provider: null,
+    news_blocked_sources: "",
     image_enabled: 0
   };
 }
@@ -98,6 +106,7 @@ function withDefaultProviderAndNewsFields(
     news_fetch_time: DEFAULT_NEWS_FETCH_TIME,
     news_max_items: DEFAULT_NEWS_MAX_ITEMS,
     news_provider: null,
+    news_blocked_sources: "",
     image_enabled: 0
   };
 }
@@ -126,6 +135,7 @@ export function defaultSettings(env: Env): StoredSettings {
     replyTimes: [],
     newsEnabled: false,
     newsKeywords: [],
+    newsBlockedSources: [],
     newsFetchTime: DEFAULT_NEWS_FETCH_TIME,
     newsMaxItems: DEFAULT_NEWS_MAX_ITEMS,
     newsProvider: DEFAULT_NEWS_PROVIDER,
@@ -170,6 +180,7 @@ export function settingsFromRow(env: Env, row: UserSettingsRow): StoredSettings 
     replyTimes: sanitizeReplyTimes(row.reply_times),
     newsEnabled: Number(row.news_enabled) === 1,
     newsKeywords: sanitizeNewsKeywords(row.news_keywords),
+    newsBlockedSources: sanitizeNewsBlockedSources(row.news_blocked_sources),
     newsFetchTime: sanitizePostTime(row.news_fetch_time),
     newsMaxItems: sanitizeNewsMaxItems(row.news_max_items),
     newsProvider: sanitizeNewsProvider(row.news_provider),
@@ -193,6 +204,25 @@ async function getImageEnabledFlag(env: Env, userId: number) {
   } catch (error) {
     if (isMissingImageEnabledColumnError(error)) {
       return false;
+    }
+    throw error;
+  }
+}
+
+async function getNewsBlockedSources(env: Env, userId: number) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT news_blocked_sources
+       FROM user_settings
+       WHERE user_id = ?
+       LIMIT 1`
+    )
+      .bind(userId)
+      .first<{ news_blocked_sources: string | null }>();
+    return sanitizeNewsBlockedSources(row?.news_blocked_sources);
+  } catch (error) {
+    if (isMissingNewsBlockedSourcesColumnError(error)) {
+      return [] as string[];
     }
     throw error;
   }
@@ -351,6 +381,7 @@ export async function getSettings(env: Env, userId: number): Promise<StoredSetti
 
   const settings = settingsFromRow(env, row);
   settings.imageEnabled = await getImageEnabledFlag(env, userId);
+  settings.newsBlockedSources = await getNewsBlockedSources(env, userId);
   return settings;
 }
 
@@ -394,6 +425,7 @@ export function normalizeIncomingSettings(env: Env, payload: Record<string, unkn
     replyTimes: sanitizeReplyTimes(payload.replyTimes),
     newsEnabled: parseBoolean(payload.newsEnabled),
     newsKeywords: sanitizeNewsKeywords(payload.newsKeywords),
+    newsBlockedSources: sanitizeNewsBlockedSources(payload.newsBlockedSources),
     newsFetchTime: sanitizePostTime(payload.newsFetchTime),
     newsMaxItems: sanitizeNewsMaxItems(payload.newsMaxItems),
     newsProvider: sanitizeNewsProvider(payload.newsProvider),
@@ -415,6 +447,24 @@ async function saveImageEnabledFlag(env: Env, userId: number, imageEnabled: bool
       .run();
   } catch (error) {
     if (isMissingImageEnabledColumnError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function saveNewsBlockedSources(env: Env, userId: number, blockedSources: string[]) {
+  try {
+    await env.DB.prepare(
+      `UPDATE user_settings
+       SET news_blocked_sources = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`
+    )
+      .bind(sanitizeNewsBlockedSources(blockedSources).join(","), userId)
+      .run();
+  } catch (error) {
+    if (isMissingNewsBlockedSourcesColumnError(error)) {
       return;
     }
     throw error;
@@ -457,6 +507,12 @@ async function saveStageLlmColumns(env: Env, userId: number, settings: StoredSet
     }
     throw error;
   }
+}
+
+async function saveOptionalSettingsColumns(env: Env, userId: number, settings: StoredSettings) {
+  await saveImageEnabledFlag(env, userId, settings.imageEnabled);
+  await saveStageLlmColumns(env, userId, settings);
+  await saveNewsBlockedSources(env, userId, settings.newsBlockedSources);
 }
 
 async function saveSettingsWithAllColumns(env: Env, userId: number, settings: StoredSettings) {
@@ -706,30 +762,26 @@ async function saveSettingsLegacyColumns(env: Env, userId: number, settings: Sto
 export async function saveSettings(env: Env, userId: number, settings: StoredSettings) {
   try {
     await saveSettingsWithAllColumns(env, userId, settings);
-    await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-    await saveStageLlmColumns(env, userId, settings);
+    await saveOptionalSettingsColumns(env, userId, settings);
     return;
   } catch (error) {
     if (isMissingNewsProviderColumnError(error)) {
       try {
         await saveSettingsWithoutNewsProvider(env, userId, settings);
-        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-        await saveStageLlmColumns(env, userId, settings);
+        await saveOptionalSettingsColumns(env, userId, settings);
         return;
       } catch (errorWithoutNewsProvider) {
         if (isMissingNewsColumnError(errorWithoutNewsProvider)) {
           try {
             await saveSettingsWithoutNewsColumns(env, userId, settings);
-            await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-            await saveStageLlmColumns(env, userId, settings);
+            await saveOptionalSettingsColumns(env, userId, settings);
             return;
           } catch (errorWithoutNews) {
             if (!isMissingProviderColumnError(errorWithoutNews)) {
               throw errorWithoutNews;
             }
             await saveSettingsLegacyColumns(env, userId, settings);
-            await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-            await saveStageLlmColumns(env, userId, settings);
+            await saveOptionalSettingsColumns(env, userId, settings);
             return;
           }
         }
@@ -738,8 +790,7 @@ export async function saveSettings(env: Env, userId: number, settings: StoredSet
           throw errorWithoutNewsProvider;
         }
         await saveSettingsLegacyColumns(env, userId, settings);
-        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-        await saveStageLlmColumns(env, userId, settings);
+        await saveOptionalSettingsColumns(env, userId, settings);
         return;
       }
     }
@@ -747,16 +798,14 @@ export async function saveSettings(env: Env, userId: number, settings: StoredSet
     if (isMissingNewsColumnError(error)) {
       try {
         await saveSettingsWithoutNewsColumns(env, userId, settings);
-        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-        await saveStageLlmColumns(env, userId, settings);
+        await saveOptionalSettingsColumns(env, userId, settings);
         return;
       } catch (errorWithoutNews) {
         if (!isMissingProviderColumnError(errorWithoutNews)) {
           throw errorWithoutNews;
         }
         await saveSettingsLegacyColumns(env, userId, settings);
-        await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-        await saveStageLlmColumns(env, userId, settings);
+        await saveOptionalSettingsColumns(env, userId, settings);
         return;
       }
     }
@@ -767,6 +816,5 @@ export async function saveSettings(env: Env, userId: number, settings: StoredSet
   }
 
   await saveSettingsLegacyColumns(env, userId, settings);
-  await saveImageEnabledFlag(env, userId, settings.imageEnabled);
-  await saveStageLlmColumns(env, userId, settings);
+  await saveOptionalSettingsColumns(env, userId, settings);
 }

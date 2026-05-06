@@ -275,6 +275,12 @@
             <p class="hint">系統會抓近 2 天全域新聞並保存摘要。手動按「立即抓取新聞」只更新摘要，不會立刻呼叫 LLM。</p>
           </label>
 
+          <label class="field fieldWide">
+            <span>媒體黑名單網域（可多個，逗號分隔）</span>
+            <input id="newsBlockedSources" type="text" placeholder="udn.com, ctee.com.tw" />
+            <p class="hint">符合網域（含子網域）的新聞會被排除，套用於 Google RSS、GNews 與 LLM 抓新聞。</p>
+          </label>
+
           <label class="field">
             <span>新聞來源</span>
             <select id="newsProvider">

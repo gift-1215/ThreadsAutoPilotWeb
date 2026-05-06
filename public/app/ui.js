@@ -841,6 +841,11 @@ export function fillSettings(settings) {
       ? settings.newsKeywords.join(", ")
       : settings.newsKeywords || "";
   }
+  if (el.newsBlockedSources) {
+    el.newsBlockedSources.value = Array.isArray(settings.newsBlockedSources)
+      ? settings.newsBlockedSources.join(", ")
+      : settings.newsBlockedSources || "";
+  }
   if (el.newsFetchTime) {
     el.newsFetchTime.value = settings.newsFetchTime || "08:00";
   }
@@ -915,6 +920,7 @@ export function collectSettings() {
     replyTimes: el.replyTimes?.value.trim() || "",
     newsEnabled: Boolean(el.newsEnabled?.checked),
     newsKeywords: el.newsKeywords?.value.trim() || "",
+    newsBlockedSources: el.newsBlockedSources?.value.trim() || "",
     newsFetchTime: el.newsFetchTime?.value || "08:00",
     newsMaxItems: Number(el.newsMaxItems?.value || "5"),
     newsProvider: el.newsProvider?.value || DEFAULT_NEWS_PROVIDER,

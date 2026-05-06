@@ -101,6 +101,67 @@ export function sanitizeNewsKeywords(input: unknown, maxItems = 8) {
   return [...unique];
 }
 
+function normalizeDomainToken(input: unknown) {
+  let value = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^[*.]+/, "")
+    .replace(/\s+/g, "");
+
+  if (!value) {
+    return "";
+  }
+
+  const firstSlash = value.search(/[/?#]/);
+  if (firstSlash >= 0) {
+    value = value.slice(0, firstSlash);
+  }
+
+  if (value.includes(":")) {
+    value = value.split(":")[0];
+  }
+
+  value = value.replace(/\.+$/g, "");
+
+  if (value.startsWith("www.")) {
+    value = value.slice(4);
+  }
+
+  if (!value || value.includes("..")) {
+    return "";
+  }
+
+  if (!/^[a-z0-9.-]+$/.test(value)) {
+    return "";
+  }
+
+  return value.slice(0, 120);
+}
+
+export function sanitizeNewsBlockedSources(input: unknown, maxItems = 30) {
+  const tokens = Array.isArray(input)
+    ? input
+    : String(input || "")
+        .split(/[,，;\n\r\t ]+/g)
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+  const unique = new Set<string>();
+  for (const token of tokens) {
+    const normalized = normalizeDomainToken(token);
+    if (!normalized) {
+      continue;
+    }
+    unique.add(normalized);
+    if (unique.size >= maxItems) {
+      break;
+    }
+  }
+
+  return [...unique];
+}
+
 export function sanitizeNewsMaxItems(input: unknown, min = 1, max = 10) {
   const value = Number(input);
   if (!Number.isFinite(value)) {
